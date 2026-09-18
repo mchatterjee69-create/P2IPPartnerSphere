@@ -163,7 +163,18 @@ const STORAGE_KEY = "p2ip_partnersphere_state_v1";
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load saved state or default to seed data
-  const [currentRole, setCurrentRole] = useState<UserRole | "public_referral">("partner");
+  const [currentRole, setCurrentRole] = useState<UserRole | "public_referral">(() => {
+    try {
+      const active = sessionStorage.getItem(`${STORAGE_KEY}_auth_session_active`);
+      if (active) {
+        const parsed = JSON.parse(active);
+        if (parsed && parsed.isAuthenticated && parsed.role) {
+          return parsed.role;
+        }
+      }
+    } catch (e) {}
+    return "partner";
+  });
   const [partners, setPartners] = useState<Partner[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY}_partners`);
     if (saved) {
@@ -193,22 +204,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [authSession, setAuthSession] = useState<AuthSession>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_auth_session`);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        // fallback
+    // Starts with Partner Authentication Gateway form screen.
+    try {
+      const active = sessionStorage.getItem(`${STORAGE_KEY}_auth_session_active`);
+      if (active) {
+        const parsed = JSON.parse(active);
+        if (parsed && parsed.isAuthenticated === true) {
+          return parsed;
+        }
       }
-    }
-    const defaultPartner = INITIAL_PARTNERS[0];
+    } catch (e) {}
+
     return {
-      isAuthenticated: true,
+      isAuthenticated: false,
       role: "partner",
-      partnerId: defaultPartner.id,
-      partnerCode: defaultPartner.code,
-      partnerName: defaultPartner.name,
-      loginTimestamp: new Date().toISOString(),
     };
   });
 
@@ -270,6 +279,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(`${STORAGE_KEY}_leads`, JSON.stringify(leads));
       localStorage.setItem(`${STORAGE_KEY}_products`, JSON.stringify(products));
       localStorage.setItem(`${STORAGE_KEY}_commissions`, JSON.stringify(commissions));
+      if (authSession.isAuthenticated) {
+        sessionStorage.setItem(`${STORAGE_KEY}_auth_session_active`, JSON.stringify(authSession));
+      } else {
+        sessionStorage.removeItem(`${STORAGE_KEY}_auth_session_active`);
+      }
       localStorage.setItem(`${STORAGE_KEY}_auth_session`, JSON.stringify(authSession));
     } catch (e) {
       console.warn("Could not save to localStorage", e);
@@ -1192,23 +1206,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const adminLogin = (password: string) => {
     const clean = password.trim();
-    if (
-      clean === "P2IPAdmin@2026" ||
-      clean === "admin" ||
-      clean === "admin123" ||
-      clean === "master"
-    ) {
+    if (clean === "p2ip@1230") {
       setCurrentRole("admin");
-      setActiveTab("admin_dashboard");
-      setAuthSession({
+      setActiveTab("admin-dashboard");
+      const session: AuthSession = {
         isAuthenticated: true,
         role: "admin",
         partnerName: "P2IP Master Administrator",
         loginTimestamp: new Date().toISOString(),
-      });
+      };
+      setAuthSession(session);
+      try {
+        sessionStorage.setItem(`${STORAGE_KEY}_auth_session_active`, JSON.stringify(session));
+        localStorage.setItem(`${STORAGE_KEY}_auth_session`, JSON.stringify(session));
+      } catch (e) {}
+      addAuditLog(
+        "ADMIN_LOGIN_SUCCESS",
+        "SYSTEM",
+        "MASTER_ADMIN",
+        "UNAUTHENTICATED",
+        "ADMIN_AUTHENTICATED",
+        "Master admin successfully authenticated with master password p2ip@1230."
+      );
       return { success: true };
     }
-    return { success: false, error: "Invalid master administrator password." };
+    addAuditLog(
+      "ADMIN_LOGIN_FAILED",
+      "SYSTEM",
+      "UNAUTHORIZED_ATTEMPT",
+      "NONE",
+      "REJECTED",
+      "Unauthorized login attempt to Admin CRM with invalid password."
+    );
+    return {
+      success: false,
+      error: "Access denied. Master password incorrect. Admin CRM is restricted to authorized personnel only.",
+    };
   };
 
   const logout = () => {
@@ -1217,7 +1250,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role: "partner",
     });
     setTempPartnerPendingAuth(null);
+    setCurrentRole("partner");
+    setActiveTab("dashboard");
     try {
+      sessionStorage.removeItem(`${STORAGE_KEY}_auth_session_active`);
       localStorage.removeItem(`${STORAGE_KEY}_auth_session`);
     } catch (e) {}
   };

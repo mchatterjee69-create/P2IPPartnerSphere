@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { useApp } from "../../context/AppContext";
 import { BrandLogo } from "./BrandLogo";
+import { AdminAuthModal } from "./AdminAuthModal";
 import {
   Bell,
   QrCode,
@@ -12,6 +13,7 @@ import {
   Sparkles,
   ChevronDown,
   LogOut,
+  Lock,
 } from "lucide-react";
 
 export const Navbar: React.FC = () => {
@@ -28,9 +30,20 @@ export const Navbar: React.FC = () => {
     resetToDemoData,
     setActiveTab,
     logout,
+    authSession,
   } = useApp();
 
+  const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
   const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const handleAdminSwitchClick = () => {
+    if (authSession.role === "admin") {
+      setCurrentRole("admin");
+      setActiveTab("admin-dashboard");
+    } else {
+      setIsAdminAuthModalOpen(true);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-[#0F5132]/10 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
@@ -69,18 +82,20 @@ export const Navbar: React.FC = () => {
 
             <button
               id="switch-role-admin"
-              onClick={() => {
-                setCurrentRole("admin");
-                setActiveTab("admin-dashboard");
-              }}
+              onClick={handleAdminSwitchClick}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                 currentRole === "admin"
                   ? "bg-[#0F5132] text-white shadow-sm"
                   : "text-[#1F2923]/80 hover:text-[#0F5132] hover:bg-white/60"
               }`}
+              title={authSession.role === "admin" ? "Switch to Central Admin CRM" : "Restricted: Master password p2ip@1230 required"}
             >
-              <Shield className="w-3.5 h-3.5" />
-              Admin / P2IP CRM
+              {authSession.role === "admin" ? (
+                <Shield className="w-3.5 h-3.5 text-[#D4AF37]" />
+              ) : (
+                <Lock className="w-3.5 h-3.5 text-amber-600" />
+              )}
+              <span>{authSession.role === "admin" ? "Admin / P2IP CRM" : "Admin (p2ip@1230)"}</span>
             </button>
 
             <button
@@ -234,17 +249,15 @@ export const Navbar: React.FC = () => {
               Partner Portal
             </button>
             <button
-              onClick={() => {
-                setCurrentRole("admin");
-                setActiveTab("admin-dashboard");
-              }}
-              className={`flex-1 py-1 px-2 rounded-lg text-xs font-semibold text-center whitespace-nowrap transition ${
+              onClick={handleAdminSwitchClick}
+              className={`flex-1 py-1 px-2 rounded-lg text-xs font-semibold text-center whitespace-nowrap transition flex items-center justify-center gap-1 ${
                 currentRole === "admin"
                   ? "bg-[#0F5132] text-white"
                   : "bg-gray-100 text-gray-700"
               }`}
             >
-              Admin CRM
+              {authSession.role !== "admin" && <Lock className="w-3 h-3 text-amber-600" />}
+              <span>Admin CRM</span>
             </button>
             <button
               onClick={() => setCurrentRole("public_referral")}
@@ -259,6 +272,12 @@ export const Navbar: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Master Admin Authorization Modal */}
+      <AdminAuthModal
+        isOpen={isAdminAuthModalOpen}
+        onClose={() => setIsAdminAuthModalOpen(false)}
+      />
     </header>
   );
 };

@@ -61,7 +61,7 @@ export const AuthPortal: React.FC = () => {
   const [regSuccessMessage, setRegSuccessMessage] = useState<string | null>(null);
 
   // Admin Login State
-  const [adminPasswordInput, setAdminPasswordInput] = useState("P2IPAdmin@2026");
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminError, setAdminError] = useState<string | null>(null);
 
   // Quick fill helper for testing
@@ -797,16 +797,17 @@ export const AuthPortal: React.FC = () => {
                   <div className="relative">
                     <Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-gray-400" />
                     <input
+                      id="admin-master-password-input"
                       type="password"
                       required
                       value={adminPasswordInput}
                       onChange={(e) => setAdminPasswordInput(e.target.value)}
-                      placeholder="Enter administrator passcode"
+                      placeholder="Enter master password (p2ip@1230)"
                       className="w-full pl-10 pr-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl text-xs font-mono text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#0F5132]"
                     />
                   </div>
-                  <p className="text-[11px] text-gray-400 mt-1">
-                    Master key pre-filled for authorized administrators (P2IPAdmin@2026).
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Strictly restricted to master administrators. Enter master password (<span className="font-mono font-bold text-[#0F5132]">p2ip@1230</span>) to access executive operations.
                   </p>
                 </div>
 
@@ -815,7 +816,7 @@ export const AuthPortal: React.FC = () => {
                   className="w-full py-3 bg-[#0F5132] hover:bg-[#146c43] text-white rounded-xl font-bold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Shield className="w-4 h-4 text-[#F5D77F]" />
-                  <span>Enter P2IP Executive Admin CRM</span>
+                  <span>Verify Master Key & Enter P2IP Executive Admin CRM</span>
                 </button>
               </form>
             )}
