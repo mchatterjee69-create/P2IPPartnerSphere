@@ -1,0 +1,6 @@
+{
+  "name": "P2IP PartnerSphere™",
+  "description": "Official Partner Relationship & Referral Management System for Path to Inner Peace - Transform Your Mind, Elevate Your Life.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
