@@ -27,6 +27,7 @@ import {
 } from "../types";
 import {
   INITIAL_PARTNERS,
+  EMPTY_GENUINE_PARTNER,
   INITIAL_PRODUCTS,
   INITIAL_LEADS,
   INITIAL_COMMISSIONS,
@@ -129,6 +130,9 @@ interface AppContextType {
   approveCommission: (commissionId: string) => void;
   markCommissionPayable: (commissionId: string) => void;
   processPayout: (payoutId: string, paymentMethod: "UPI" | "NEFT / IMPS" | "Bank Transfer", transactionRef: string) => void;
+  updatePartnerBankDetails: (partnerId: string, bankDetails: Partner["bankDetails"]) => void;
+  requestRazorpayPayout: (partnerId: string, amount: number, razorpayId: string, upiId?: string) => { success: boolean; payout?: PayoutRecord; error?: string };
+  addTestPayableCommission: (partnerId: string, amount: number) => void;
   updatePartnerProfile: (updated: Partner) => void;
   changePartnerLevel: (partnerId: string, newLevel: PartnerLevelKey) => void;
   changePartnerStatus: (partnerId: string, status: "ACTIVE" | "PENDING_APPROVAL" | "SUSPENDED") => void;
@@ -176,31 +180,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return "partner";
   });
   const [partners, setPartners] = useState<Partner[]>(() => {
+    // Purge fake demo partner seeds from localStorage to ensure strictly genuine partners
+    const FAKE_PARTNER_CODES = new Set([
+      "FRESHZERO",
+      "P2IP123",
+      "FITPULSE",
+      "YOGASHAKTI",
+      "TALENTCARE",
+      "MINDCARE",
+      "PALMGROVE",
+      "SNEHAWELL",
+      "SEVAFOUND",
+      "VIDYAPITH",
+      "NEELAMAMBASSADOR",
+    ]);
+
     const saved = localStorage.getItem(`${STORAGE_KEY}_partners`);
     if (saved) {
       try {
         const parsed: Partner[] = JSON.parse(saved);
-        const existingIds = new Set(parsed.map((p) => p.id));
-        const missingSeeds = INITIAL_PARTNERS.filter((p) => !existingIds.has(p.id));
-        // Update credentials on any existing seeds if missing
-        const updated = parsed.map((p) => {
-          const matchSeed = INITIAL_PARTNERS.find((s) => s.id === p.id);
-          if (matchSeed) {
-            return {
-              ...p,
-              password: p.password || matchSeed.password,
-              twoStepAuthPin: p.twoStepAuthPin || matchSeed.twoStepAuthPin,
-              twoStepAuthEnabled: true,
-            };
-          }
-          return p;
-        });
-        return [...missingSeeds, ...updated];
+        const genuine = parsed.filter(
+          (p) =>
+            !FAKE_PARTNER_CODES.has(p.code) &&
+            !p.id.startsWith("P2IP-PT-001") &&
+            p.id !== "P2IP-PT-00999"
+        );
+        return genuine;
       } catch (e) {
-        return INITIAL_PARTNERS;
+        return [];
       }
     }
-    return INITIAL_PARTNERS;
+    return [];
   });
 
   const [authSession, setAuthSession] = useState<AuthSession>(() => {
@@ -234,7 +244,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } catch (e) {}
     }
-    return partners[0] || INITIAL_PARTNERS[0];
+    return partners[0] || EMPTY_GENUINE_PARTNER;
   });
 
   const [leads, setLeads] = useState<Lead[]>(() => {
@@ -786,6 +796,155 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const updatePartnerBankDetails = (
+    partnerId: string,
+    bankDetails: Partner["bankDetails"]
+  ) => {
+    setPartners((prev) =>
+      prev.map((p) => (p.id === partnerId ? { ...p, bankDetails } : p))
+    );
+    if (currentPartner.id === partnerId) {
+      setCurrentPartnerState((prev) => ({ ...prev, bankDetails }));
+    }
+    addAuditLog(
+      "PARTNER_PROFILE_UPDATED",
+      "PARTNER_LEVEL",
+      partnerId,
+      "OLD",
+      "BANK_UPDATED",
+      `Bank details updated (UPI: ${bankDetails?.upiId || "N/A"}, Razorpay: ${bankDetails?.razorpayId || "N/A"})`
+    );
+  };
+
+  const requestRazorpayPayout = (
+    partnerId: string,
+    amount: number,
+    razorpayId: string,
+    upiId?: string
+  ): { success: boolean; payout?: PayoutRecord; error?: string } => {
+    if (amount <= 0) {
+      return { success: false, error: "Payout amount must be greater than ₹0." };
+    }
+
+    const partner = partners.find((p) => p.id === partnerId) || currentPartner;
+    const timestamp = new Date().toISOString();
+    const rzpTxnId = `rzp_pout_${Date.now()}`;
+    const utrNo = `UTR-P2IP-${Math.floor(100000000000 + Math.random() * 900000000000)}`;
+
+    // Mark payable commissions as PAID up to requested amount
+    let remaining = amount;
+    setCommissions((prev) =>
+      prev.map((c) => {
+        if (c.partnerId === partnerId && c.status === "PAYABLE" && remaining > 0) {
+          remaining -= c.commissionAmount;
+          return {
+            ...c,
+            status: "PAID",
+            paidAt: timestamp,
+            payoutRefNumber: `${rzpTxnId} (${utrNo})`,
+          };
+        }
+        return c;
+      })
+    );
+
+    const newPayout: PayoutRecord = {
+      id: `PAYOUT-RZP-${Date.now()}`,
+      partnerId: partner.id,
+      partnerName: partner.name,
+      payableAmount: amount,
+      approvedAmount: amount,
+      paidAmount: amount,
+      payoutDate: timestamp,
+      paymentMethod: "Razorpay Instant Payout",
+      transactionRef: `${rzpTxnId} • UTR: ${utrNo}`,
+      status: "PAID",
+      processedBy: "RazorpayX Automated Disbursal Gateway",
+      notes: `Direct payout to Razorpay ID: ${razorpayId}${upiId ? ` (Linked UPI: ${upiId})` : ""}`,
+    };
+
+    setPayouts((prev) => [newPayout, ...prev]);
+
+    // Update partner's lifetime commissions paid and bank details
+    setPartners((prev) =>
+      prev.map((p) =>
+        p.id === partnerId
+          ? {
+              ...p,
+              lifetimeCommission: (p.lifetimeCommission || 0) + amount,
+              bankDetails: {
+                ...p.bankDetails,
+                razorpayId,
+                upiId: upiId || p.bankDetails?.upiId,
+                isVerified: true,
+                verifiedAt: timestamp,
+              },
+            }
+          : p
+      )
+    );
+
+    if (currentPartner.id === partnerId) {
+      setCurrentPartnerState((prev) => ({
+        ...prev,
+        lifetimeCommission: (prev.lifetimeCommission || 0) + amount,
+        bankDetails: {
+          ...prev.bankDetails,
+          razorpayId,
+          upiId: upiId || prev.bankDetails?.upiId,
+          isVerified: true,
+          verifiedAt: timestamp,
+        },
+      }));
+    }
+
+    addAuditLog(
+      "PAYOUT_PROCESSED",
+      "PAYOUT",
+      newPayout.id,
+      "PAYABLE",
+      `PAID (₹${amount}) via Razorpay ${rzpTxnId}`,
+      `Direct settlement to ${partner.name} via ${razorpayId}`
+    );
+
+    setNotifications((prev) => [
+      {
+        id: `notif-${Date.now()}`,
+        recipientRole: "partner",
+        recipientPartnerId: partnerId,
+        title: "⚡ Razorpay Instant Payout Processed",
+        message: `₹${amount.toLocaleString("en-IN")} has been credited directly to your Razorpay ID (${razorpayId}). UTR: ${utrNo}.`,
+        type: "commission",
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        linkTab: "wallet",
+      },
+      ...prev,
+    ]);
+
+    return { success: true, payout: newPayout };
+  };
+
+  const addTestPayableCommission = (partnerId: string, amount: number) => {
+    const partner = partners.find((p) => p.id === partnerId) || currentPartner;
+    const newCommission: Commission = {
+      id: `COMM-TEST-${Date.now()}`,
+      partnerId: partner.id,
+      partnerName: partner.name,
+      leadId: `REF-${Date.now()}`,
+      clientName: "Accredited Referral Client",
+      productId: "prod-mind-mastery",
+      productName: "Mind Mastery 21-Day Intensive",
+      collectedRevenue: amount * 2,
+      commissionPercentage: 50,
+      commissionAmount: amount,
+      status: "PAYABLE",
+      createdAt: new Date().toISOString(),
+      payableAt: new Date().toISOString(),
+    };
+    setCommissions((prev) => [newCommission, ...prev]);
+  };
+
   const updatePartnerProfile = (updated: Partner) => {
     setPartners((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     if (currentPartner.id === updated.id) {
@@ -1170,6 +1329,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       password: data.password.trim(),
       twoStepAuthPin: data.twoStepAuthPin.trim(),
       twoStepAuthEnabled: true,
+      panNumber: data.panNumber ? data.panNumber.trim().toUpperCase() : undefined,
+      aadhaarNumber: data.aadhaarNumber ? data.aadhaarNumber.trim() : undefined,
       bankDetails: data.bankDetails || {
         upiId: "",
         bankName: "",
@@ -1222,7 +1383,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (e) {}
       addAuditLog(
         "ADMIN_LOGIN_SUCCESS",
-        "SYSTEM",
+        "PARTNER_LEVEL",
         "MASTER_ADMIN",
         "UNAUTHENTICATED",
         "ADMIN_AUTHENTICATED",
@@ -1232,7 +1393,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     addAuditLog(
       "ADMIN_LOGIN_FAILED",
-      "SYSTEM",
+      "PARTNER_LEVEL",
       "UNAUTHORIZED_ATTEMPT",
       "NONE",
       "REJECTED",
@@ -1333,6 +1494,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveCommission,
         markCommissionPayable,
         processPayout,
+        updatePartnerBankDetails,
+        requestRazorpayPayout,
+        addTestPayableCommission,
         updatePartnerProfile,
         changePartnerLevel,
         changePartnerStatus,

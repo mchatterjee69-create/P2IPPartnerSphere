@@ -37,7 +37,7 @@ export const Navbar: React.FC = () => {
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   const handleAdminSwitchClick = () => {
-    if (authSession.role === "admin") {
+    if (authSession?.role === "admin") {
       setCurrentRole("admin");
       setActiveTab("admin-dashboard");
     } else {
@@ -88,14 +88,14 @@ export const Navbar: React.FC = () => {
                   ? "bg-[#0F5132] text-white shadow-sm"
                   : "text-[#1F2923]/80 hover:text-[#0F5132] hover:bg-white/60"
               }`}
-              title={authSession.role === "admin" ? "Switch to Central Admin CRM" : "Restricted: Master password p2ip@1230 required"}
+              title={authSession?.role === "admin" ? "Switch to Central Admin CRM" : "Restricted: Master password p2ip@1230 required"}
             >
-              {authSession.role === "admin" ? (
+              {authSession?.role === "admin" ? (
                 <Shield className="w-3.5 h-3.5 text-[#D4AF37]" />
               ) : (
                 <Lock className="w-3.5 h-3.5 text-amber-600" />
               )}
-              <span>{authSession.role === "admin" ? "Admin / P2IP CRM" : "Admin (p2ip@1230)"}</span>
+              <span>{authSession?.role === "admin" ? "Admin / P2IP CRM" : "Admin (p2ip@1230)"}</span>
             </button>
 
             <button
@@ -113,31 +113,40 @@ export const Navbar: React.FC = () => {
               <ExternalLink className="w-3.5 h-3.5" />
               Referral Landing
             </button>
+
+            <button
+              id="nav-partner-with-us-btn"
+              onClick={() => {
+                setActiveTab("partner-with-us");
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-[#0F5132] hover:bg-emerald-50 transition cursor-pointer"
+              title="Refer & Earn program details for all verticals"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Partner With Us</span>
+            </button>
           </div>
 
           {/* Right Action Icons & Profile */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Quick Demo Partner Switcher (When in Partner Portal) */}
-            {currentRole === "partner" && (
-              <div className="relative hidden lg:block">
-                <div className="flex items-center gap-2 bg-[#F8F9F8] border border-gray-200 rounded-lg px-2.5 py-1 text-xs">
-                  <span className="text-gray-500 font-medium">Partner:</span>
-                  <select
-                    id="partner-persona-select"
-                    value={currentPartner.id}
-                    onChange={(e) => {
-                      const selected = partners.find((p) => p.id === e.target.value);
-                      if (selected) setCurrentPartner(selected);
-                    }}
-                    className="bg-transparent font-semibold text-[#0F5132] focus:outline-none cursor-pointer pr-1"
-                  >
-                    {partners.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.partnerType}) - {p.level}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            <a
+              href="https://p2-ip-partner-sphere.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#D4AF37] hover:bg-[#c29e2f] text-[#0F5132] font-black text-xs transition shadow-2xs"
+              title="External partner registration"
+            >
+              <span>Register Now</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            {/* Authenticated Genuine Partner Identity Badge */}
+            {currentRole === "partner" && currentPartner && currentPartner.code !== "PENDING_REGISTRATION" && (
+              <div className="hidden lg:flex items-center gap-2 bg-emerald-50/80 border border-emerald-200 rounded-xl px-3 py-1.5 text-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                <span className="text-[#0F5132] font-bold truncate max-w-[140px]">{currentPartner.name}</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 bg-white rounded border border-emerald-200 text-emerald-800 font-semibold">
+                  {currentPartner.code}
+                </span>
               </div>
             )}
 
@@ -256,7 +265,7 @@ export const Navbar: React.FC = () => {
                   : "bg-gray-100 text-gray-700"
               }`}
             >
-              {authSession.role !== "admin" && <Lock className="w-3 h-3 text-amber-600" />}
+              {authSession?.role !== "admin" && <Lock className="w-3 h-3 text-amber-600" />}
               <span>Admin CRM</span>
             </button>
             <button

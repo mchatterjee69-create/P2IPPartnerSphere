@@ -23,6 +23,7 @@ import {
   HelpCircle,
   CheckSquare,
   LogOut,
+  Sparkles,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
@@ -57,7 +58,8 @@ export const Sidebar: React.FC = () => {
     { id: "inner-circle", label: "Inner Circle Loop", icon: Share2 },
     { id: "marketing", label: "Marketing Centre", icon: Megaphone },
     { id: "analytics", label: "Partner Analytics", icon: BarChart3 },
-    { id: "partner-ai", label: "P2IP Partner AI", icon: Bot, highlight: true },
+    { id: "partner-with-us", label: "Partner With Us (Refer & Earn)", icon: Sparkles, highlight: true },
+    { id: "partner-ai", label: "P2IP Partner AI", icon: Bot },
     { id: "profile", label: "Partner Profile & QR", icon: User },
   ];
 

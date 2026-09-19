@@ -24,6 +24,8 @@ export const PartnerProfileView: React.FC = () => {
   const [mobile, setMobile] = useState(currentPartner.mobile);
   const [email, setEmail] = useState(currentPartner.email);
   const [location, setLocation] = useState(currentPartner.location);
+  const [panNumber, setPanNumber] = useState(currentPartner.panNumber || "");
+  const [aadhaarNumber, setAadhaarNumber] = useState(currentPartner.aadhaarNumber || "");
   const [upiId, setUpiId] = useState(currentPartner.bankDetails?.upiId || "");
   const [bankName, setBankName] = useState(currentPartner.bankDetails?.bankName || "");
   const [accountNumber, setAccountNumber] = useState(currentPartner.bankDetails?.accountNumber || "");
@@ -40,6 +42,8 @@ export const PartnerProfileView: React.FC = () => {
       mobile,
       email,
       location,
+      panNumber: panNumber.trim().toUpperCase(),
+      aadhaarNumber: aadhaarNumber.trim(),
       bankDetails: {
         upiId,
         bankName,
@@ -140,6 +144,36 @@ export const PartnerProfileView: React.FC = () => {
                 onChange={(e) => setLocation(e.target.value)}
                 className="w-full p-2.5 border border-gray-300 rounded-xl"
               />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">
+                PAN Card Number (TDS Sec 194H)
+              </label>
+              <input
+                type="text"
+                maxLength={10}
+                placeholder="e.g. ABCDE1234F"
+                value={panNumber}
+                onChange={(e) => setPanNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                className="w-full p-2.5 border border-gray-300 rounded-xl font-mono uppercase"
+              />
+              <span className="text-[10px] text-gray-400">10-character PAN for statutory TDS compliance</span>
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">
+                Aadhaar Number (Identity KYC)
+              </label>
+              <input
+                type="text"
+                maxLength={14}
+                placeholder="e.g. 1234 5678 9012"
+                value={aadhaarNumber}
+                onChange={(e) => setAadhaarNumber(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-xl font-mono"
+              />
+              <span className="text-[10px] text-gray-400">12-digit UIDAI government identity number</span>
             </div>
           </div>
         </div>

@@ -7,6 +7,7 @@ import { QuickReferModal } from "./components/common/QuickReferModal";
 import { QRCodeModal } from "./components/common/QRCodeModal";
 import { TermsModal } from "./components/common/TermsModal";
 import { NotificationDrawer } from "./components/common/NotificationDrawer";
+import { MobileMoreHub } from "./components/common/MobileMoreHub";
 
 // Partner Views
 import { PartnerDashboard } from "./components/partner/PartnerDashboard";
@@ -19,6 +20,7 @@ import { PartnerAnalyticsView } from "./components/partner/PartnerAnalyticsView"
 import { PartnerAiAssistant } from "./components/partner/PartnerAiAssistant";
 import { PartnerProfileView } from "./components/partner/PartnerProfileView";
 import { PartnerFollowupView } from "./components/partner/PartnerFollowupView";
+import { PartnerWithUsView } from "./components/partner/PartnerWithUsView";
 
 // Admin Views
 import { AdminDashboard } from "./components/admin/AdminDashboard";
@@ -72,8 +74,12 @@ const AppContent: React.FC = () => {
       case "partner-ai":
       case "ai-assistant":
         return <PartnerAiAssistant />;
+      case "partner-with-us":
+        return <PartnerWithUsView />;
       case "profile":
         return <PartnerProfileView />;
+      case "more":
+        return <MobileMoreHub />;
 
       // Admin Tabs
       case "admin-dashboard":

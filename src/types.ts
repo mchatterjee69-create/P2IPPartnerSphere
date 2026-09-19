@@ -53,6 +53,10 @@ export interface Partner {
     accountNumber?: string;
     ifscCode?: string;
     bankName?: string;
+    accountType?: "SAVINGS" | "CURRENT";
+    razorpayId?: string; // Razorpay Linked Account / Contact / VPA ID
+    isVerified?: boolean;
+    verifiedAt?: string;
   };
   termsAccepted: boolean;
   termsAcceptedAt?: string;
@@ -60,6 +64,8 @@ export interface Partner {
   password?: string;
   twoStepAuthPin?: string;
   twoStepAuthEnabled?: boolean;
+  panNumber?: string;
+  aadhaarNumber?: string;
 }
 
 export interface AuthSession {
@@ -332,7 +338,7 @@ export interface PayoutRecord {
   approvedAmount: number;
   paidAmount: number;
   payoutDate?: string;
-  paymentMethod: "UPI" | "NEFT / IMPS" | "Bank Transfer";
+  paymentMethod: "UPI" | "NEFT / IMPS" | "Bank Transfer" | "Razorpay Instant Payout";
   transactionRef?: string;
   status: "PENDING" | "PROCESSING" | "PAID" | "FAILED";
   processedBy?: string;

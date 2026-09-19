@@ -440,6 +440,30 @@ export const AdminPartnerManagement: React.FC = () => {
               </button>
             </div>
 
+            {/* KYC & Identity verification info */}
+            <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-200/60 text-xs space-y-1">
+              <div className="font-bold text-gray-700 flex items-center justify-between">
+                <span className="text-[#0F5132] font-extrabold">Statutory KYC & Tax Records:</span>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                  {selectedPartner.termsAccepted ? "✓ T&C Accepted" : "Pending T&C"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                <div>
+                  <span className="text-gray-500">PAN Card:</span>{" "}
+                  <span className="font-mono font-bold text-gray-900">
+                    {selectedPartner.panNumber || "Not provided"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Aadhaar:</span>{" "}
+                  <span className="font-mono font-bold text-gray-900">
+                    {selectedPartner.aadhaarNumber || "Not provided"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <form onSubmit={handleUpdatePartnerDetails} className="space-y-3">
               <div>
                 <label className="block font-bold text-gray-700 mb-1">Growth Tier Level</label>
