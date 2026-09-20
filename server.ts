@@ -118,7 +118,8 @@ app.post("/api/partners/register", (req, res) => {
     const partner = registerPartner(req.body);
     res.json({ success: true, partner });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    const status = err.message?.includes("Duplicate registration prohibited") ? 409 : 400;
+    res.status(status).json({ error: err.message, isDuplicate: status === 409 });
   }
 });
 
@@ -180,7 +181,8 @@ app.post("/api/referrals", (req, res) => {
     const referral = createReferral(req.body);
     res.json({ success: true, referral });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    const status = err.message?.includes("Duplicate registration prohibited") ? 409 : 400;
+    res.status(status).json({ error: err.message, isDuplicate: status === 409 });
   }
 });
 

@@ -80,7 +80,7 @@ interface AppContextType {
       mobile: string;
       email: string;
     }
-  ) => { success: boolean; partner?: Partner; error?: string };
+  ) => { success: boolean; partner?: Partner; error?: string; isDuplicate?: boolean; existingPartner?: Partner };
   adminLogin: (password: string) => { success: boolean; error?: string };
   logout: () => void;
   partners: Partner[];
@@ -116,8 +116,10 @@ interface AppContextType {
   createReferral: (input: CreateReferralInput) => {
     success: boolean;
     isDuplicate: boolean;
-    lead: Lead;
+    lead?: Lead;
     message: string;
+    error?: string;
+    existingLead?: Lead;
   };
   resolveDuplicateAttribution: (
     leadId: string,
@@ -442,21 +444,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createReferral = (input: CreateReferralInput) => {
     const cleanMobile = input.mobile.replace(/[^0-9]/g, "");
     const cleanEmail = input.email.trim().toLowerCase();
+    const targetPartner = partners.find((p) => p.id === input.partnerId) || currentPartner;
 
-    // Check duplicate by last 10 digits of phone or email
+    // Prevent Self-Referral
+    const cleanPartnerMobile = targetPartner.mobile.replace(/[^0-9]/g, "");
+    if (
+      (cleanPartnerMobile.length >= 10 && cleanPartnerMobile.slice(-10) === cleanMobile.slice(-10)) ||
+      targetPartner.email.toLowerCase().trim() === cleanEmail
+    ) {
+      return {
+        success: false,
+        isDuplicate: true,
+        error: "Self-referrals are strictly prohibited. Partners cannot refer themselves.",
+        message: "Self-referrals are strictly prohibited.",
+      };
+    }
+
+    // Strict duplicate check against all existing leads/clients by analyzing all input details
     const existingDuplicate = leads.find((l) => {
       const lMobile = l.mobile.replace(/[^0-9]/g, "");
-      const matchMobile = cleanMobile.length >= 10 && lMobile.endsWith(cleanMobile.slice(-10));
+      const matchMobile = cleanMobile.length >= 10 && (lMobile.endsWith(cleanMobile.slice(-10)) || cleanMobile.endsWith(lMobile.slice(-10)));
       const matchEmail = cleanEmail.length > 3 && l.email.trim().toLowerCase() === cleanEmail;
       return matchMobile || matchEmail;
     });
 
+    // STRICTLY PROHIBIT DUPLICATE CLIENT REGISTRATION
+    if (existingDuplicate) {
+      const matchedField = cleanEmail && existingDuplicate.email.trim().toLowerCase() === cleanEmail
+        ? `email address (${input.email})`
+        : `mobile number (+91 ${input.mobile.replace(/[^0-9]/g, "").slice(-10)})`;
+
+      addAuditLog(
+        "DUPLICATE_CLIENT_REGISTRATION_BLOCKED",
+        "LEAD",
+        existingDuplicate.id,
+        "BLOCKED",
+        `Attempted by ${targetPartner.name} for ${input.clientName}`,
+        `Duplicate client registration strictly prohibited. Matched existing record ${existingDuplicate.id} (${existingDuplicate.clientName})`
+      );
+
+      const notif: AppNotification = {
+        id: `notif-${Date.now()}`,
+        recipientRole: "admin",
+        title: "🚫 Duplicate Client Registration Blocked",
+        message: `Attempted duplicate client registration for "${input.clientName}" by ${targetPartner.name} was blocked. Client is already registered under ${existingDuplicate.id} (${existingDuplicate.partnerName}).`,
+        type: "alert",
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        linkTab: "leads",
+      };
+      setNotifications((prev) => [notif, ...prev]);
+
+      return {
+        success: false,
+        isDuplicate: true,
+        error: `Duplicate client registration strictly prohibited: A client with this ${matchedField} is already registered under Referral ID ${existingDuplicate.id} (registered on ${existingDuplicate.createdAt.slice(0, 10)} by ${existingDuplicate.partnerName}). Re-registration of existing clients is not permitted.`,
+        message: `Duplicate client registration prohibited. Client already registered under ${existingDuplicate.id}.`,
+        existingLead: existingDuplicate,
+      };
+    }
+
     const refNumber = leads.length + 1;
     const referralId = `P2IP-REF-${String(refNumber).padStart(6, "0")}`;
-    const targetPartner = partners.find((p) => p.id === input.partnerId) || currentPartner;
     const prod = products.find((p) => p.id === input.interestedProgramId);
-
-    const isDuplicate = !!existingDuplicate;
 
     const newLead: Lead = {
       id: referralId,
@@ -475,20 +525,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       referringClientId: input.referringClientId,
       status: "NEW",
       createdAt: new Date().toISOString(),
-      attributionStatus: isDuplicate ? "DUPLICATE_FLAGGED" : "NORMAL",
-      duplicateInfo: isDuplicate
-        ? {
-            detectedAt: new Date().toISOString(),
-            matchedField:
-              existingDuplicate.email.toLowerCase() === cleanEmail ? "email" : "mobile",
-            existingLeadId: existingDuplicate.id,
-            originalPartnerId: existingDuplicate.partnerId,
-            originalPartnerName: existingDuplicate.partnerName,
-            originalReferralDate: existingDuplicate.createdAt.slice(0, 10),
-            newPartnerId: targetPartner.id,
-            newPartnerName: targetPartner.name,
-          }
-        : undefined,
+      attributionStatus: "NORMAL",
       owner: "P2IP Care Team",
     };
 
@@ -513,37 +550,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }),
       }).catch((e) => console.warn("Referral backend sync:", e));
     } catch (e) {}
-
-    // If duplicate, notify Admin and DO NOT assign commission
-    if (isDuplicate) {
-      addAuditLog(
-        "DUPLICATE_LEAD_FLAGGED",
-        "ATTRIBUTION",
-        referralId,
-        "NONE",
-        `FLAGGED (Matched with ${existingDuplicate.id} - ${existingDuplicate.partnerName})`,
-        "Duplicate lead protection triggered on mobile/email match"
-      );
-
-      const notif: AppNotification = {
-        id: `notif-${Date.now()}`,
-        recipientRole: "admin",
-        title: "⚠️ Duplicate Lead Detected",
-        message: `Lead ${input.clientName} submitted by ${targetPartner.name} matches existing record ${existingDuplicate.id} (${existingDuplicate.partnerName}). Attribution review needed.`,
-        type: "alert",
-        timestamp: new Date().toISOString(),
-        isRead: false,
-        linkTab: "leads",
-      };
-      setNotifications((prev) => [notif, ...prev]);
-
-      return {
-        success: true,
-        isDuplicate: true,
-        lead: newLead,
-        message: "Existing lead detected. Sent to Admin for attribution review.",
-      };
-    }
 
     // If clean referral, update partner stats
     setPartners((prev) =>
@@ -1172,6 +1178,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Partner Management Helpers
   const createPartner = (partner: Partner) => {
+    const cleanMobile = partner.mobile.replace(/[^0-9]/g, "");
+    const cleanEmail = partner.email.trim().toLowerCase();
+    const cleanCode = partner.code.trim().toUpperCase();
+
+    const existing = partners.find((p) => {
+      const pMobile = p.mobile.replace(/[^0-9]/g, "");
+      const matchMobile = cleanMobile.length >= 10 && (pMobile.endsWith(cleanMobile.slice(-10)) || cleanMobile.endsWith(pMobile.slice(-10)));
+      const matchEmail = cleanEmail.length > 3 && p.email.trim().toLowerCase() === cleanEmail;
+      const matchCode = p.code.trim().toUpperCase() === cleanCode;
+      return matchMobile || matchEmail || matchCode;
+    });
+
+    if (existing) {
+      alert(`Duplicate Partner Prohibited: A partner with this mobile/email already exists (Partner Code: ${existing.code}, Name: ${existing.name}). Duplicate partner records are not permitted.`);
+      return;
+    }
+
     setPartners((prev) => [partner, ...prev]);
     addAuditLog("PARTNER_CREATED", "PARTNER_LEVEL", partner.id, "NONE", partner.name);
   };

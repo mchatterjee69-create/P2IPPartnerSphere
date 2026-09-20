@@ -206,7 +206,15 @@ export const Navbar: React.FC = () => {
             <div className="flex items-center gap-2 pl-1 sm:pl-2 border-l border-gray-200">
               <div className="w-8 h-8 rounded-full bg-[#0F5132] text-white flex items-center justify-center font-bold text-xs shadow-inner ring-1 ring-[#D4AF37]/50 overflow-hidden">
                 {currentRole === "admin" ? (
-                  <Shield className="w-4 h-4 text-[#D4AF37]" />
+                  <img
+                    src="/p2ip-logo.webp"
+                    onError={(e) => {
+                      e.currentTarget.src = "https://yourimageshare.com/ib/Lqlh3mtjO0.png";
+                    }}
+                    alt="P2IP Admin"
+                    className="w-full h-full rounded-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
                 ) : currentPartner.avatarUrl ? (
                   <img
                     src={currentPartner.avatarUrl}

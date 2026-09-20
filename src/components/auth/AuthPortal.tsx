@@ -208,8 +208,17 @@ export const AuthPortal: React.FC = () => {
       <header className="bg-[#0F5132] text-white border-b border-[#D4AF37]/30 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-lg font-black text-[#F5D77F] shadow-sm">
-              ॐ
+            <div className="w-11 h-11 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
+              <img
+                src="/p2ip-logo.webp"
+                onError={(e) => {
+                  e.currentTarget.src = "https://yourimageshare.com/ib/Lqlh3mtjO0.png";
+                }}
+                alt="P2IP Logo"
+                className="w-full h-full rounded-full object-contain"
+                referrerPolicy="no-referrer"
+                loading="eager"
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">

@@ -14,39 +14,25 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   size = "md",
 }) => {
   const isDark = variant === "dark";
-  const iconSize = size === "sm" ? 28 : size === "lg" ? 44 : 36;
+  const iconSize = size === "sm" ? 32 : size === "lg" ? 48 : 40;
 
   return (
     <div className={`flex items-center gap-2.5 select-none ${className}`} id="brand-logo-container">
-      {/* Official styled emblem: Geometric Emerald & Radiance Gold Sanctuary Motif */}
+      {/* Official P2IP round logo with no cover */}
       <div
-        className="relative flex items-center justify-center rounded-xl bg-gradient-to-br from-[#0F5132] to-[#0A3D24] shadow-sm ring-1 ring-[#D4AF37]/30"
+        className="relative flex items-center justify-center rounded-full shrink-0 overflow-hidden"
         style={{ width: iconSize, height: iconSize }}
       >
-        <svg
-          viewBox="0 0 32 32"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="w-4/5 h-4/5"
-        >
-          {/* Outer circle of harmony */}
-          <circle cx="16" cy="16" r="14" stroke="#D4AF37" strokeWidth="1" strokeOpacity="0.4" />
-          {/* Inner transformation petals */}
-          <path
-            d="M16 5C16 11 11 16 5 16C11 16 16 21 16 27C16 21 21 16 27 16C21 16 16 11 16 5Z"
-            fill="url(#goldGrad)"
-            fillOpacity="0.9"
-          />
-          {/* Center core stillness */}
-          <circle cx="16" cy="16" r="3.2" fill="#0F5132" stroke="#D4AF37" strokeWidth="1.2" />
-          <defs>
-            <linearGradient id="goldGrad" x1="5" y1="5" x2="27" y2="27" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#F5D77F" />
-              <stop offset="0.5" stopColor="#D4AF37" />
-              <stop offset="1" stopColor="#AA7C11" />
-            </linearGradient>
-          </defs>
-        </svg>
+        <img
+          src="/p2ip-logo.webp"
+          onError={(e) => {
+            e.currentTarget.src = "https://yourimageshare.com/ib/Lqlh3mtjO0.png";
+          }}
+          alt="P2IP Logo"
+          className="w-full h-full rounded-full object-contain"
+          referrerPolicy="no-referrer"
+          loading="eager"
+        />
       </div>
 
       <div className="flex flex-col">

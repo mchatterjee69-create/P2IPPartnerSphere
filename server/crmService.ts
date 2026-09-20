@@ -336,9 +336,22 @@ export function getPartnerMetrics(partnerId: string) {
 // PARTNER CRUD & AUTH
 // ----------------------------------------------------
 export function registerPartner(input: PartnerRegistrationInput) {
-  const existing = db.prepare("SELECT id FROM partners WHERE email = ? OR mobile = ?").get(input.email, input.mobile) as any;
+  const cleanMobile = input.mobile.replace(/[^0-9]/g, "");
+  const cleanEmail = input.email.trim().toLowerCase();
+
+  // Strict duplicate partner registration check: analyze email and normalized mobile (last 10 digits)
+  const allPartners = db.prepare("SELECT id, code, name, mobile, email FROM partners").all() as any[];
+  const existing = allPartners.find((p) => {
+    const pMobile = p.mobile.replace(/[^0-9]/g, "");
+    const matchMobile = cleanMobile.length >= 10 && (pMobile.endsWith(cleanMobile.slice(-10)) || cleanMobile.endsWith(pMobile.slice(-10)));
+    const matchEmail = cleanEmail.length > 3 && p.email.trim().toLowerCase() === cleanEmail;
+    return matchMobile || matchEmail;
+  });
+
   if (existing) {
-    throw new Error("A partner with this email or mobile number already exists.");
+    throw new Error(
+      `Duplicate registration prohibited: A partner account is already registered with this mobile number or email under Partner Code: ${existing.code} (${existing.name}). Once your unique partner code is generated, you can log in directly and cannot register once again.`
+    );
   }
 
   const partnerCountRow = db.prepare("SELECT COUNT(*) as count FROM partners").get() as { count: number };
@@ -438,13 +451,26 @@ export function createReferral(input: CreateReferralInput) {
     throw new Error("Anti-fraud validation failed: Self-referrals are not permitted.");
   }
 
-  // Duplicate collision check
-  const duplicate = db.prepare(`
-    SELECT * FROM referrals WHERE (mobile = ? OR email = ?) AND partner_id != ?
-  `).get(input.mobile, input.email, input.partnerId) as any;
+  // Strict Duplicate Collision Check: Prohibit duplicate client registration
+  const cleanClientMobile = input.mobile.replace(/[^0-9]/g, "");
+  const cleanClientEmail = input.email.trim().toLowerCase();
 
-  const attributionStatus = duplicate ? "DUPLICATE_FLAGGED" : "NORMAL";
-  const duplicatePartnerId = duplicate ? duplicate.partner_id : null;
+  const allReferrals = db.prepare("SELECT id, client_name, mobile, email, partner_name FROM referrals").all() as any[];
+  const duplicate = allReferrals.find((r) => {
+    const rMobile = r.mobile.replace(/[^0-9]/g, "");
+    const matchMobile = cleanClientMobile.length >= 10 && (rMobile.endsWith(cleanClientMobile.slice(-10)) || cleanClientMobile.endsWith(rMobile.slice(-10)));
+    const matchEmail = cleanClientEmail.length > 3 && r.email.trim().toLowerCase() === cleanClientEmail;
+    return matchMobile || matchEmail;
+  });
+
+  if (duplicate) {
+    throw new Error(
+      `Duplicate registration prohibited: A client with mobile '${input.mobile}' or email '${input.email}' is already registered in P2IP under Referral ID ${duplicate.id} (${duplicate.client_name}, attributed to: ${duplicate.partner_name}). Duplicate client registrations are strictly prohibited.`
+    );
+  }
+
+  const attributionStatus = "NORMAL";
+  const duplicatePartnerId = null;
 
   const product = db.prepare("SELECT * FROM products WHERE id = ?").get(input.programId) as any;
   const programName = product?.name || "FREE 5-Day Mind Reset Challenge";
