@@ -19,9 +19,7 @@ export const PartnerGrowthView: React.FC = () => {
   const currentLevelIndex = partnerLevels.findIndex((l) => l.key === currentLevelKey);
 
   const partnerLeads = leads.filter((l) => l.partnerId === currentPartner.id);
-  const monthlyReferrals = partnerLeads.length > 0 
-    ? partnerLeads.length 
-    : (currentPartner.currentMonthlyReferrals ?? 0);
+  const monthlyReferrals = partnerLeads.length;
   const target = currentPartner.monthlyTarget || 20;
 
   return (

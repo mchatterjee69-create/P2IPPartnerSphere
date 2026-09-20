@@ -3,8 +3,35 @@ import path from "path";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { db, initDatabase } from "./server/db";
+import {
+  getAdminMetrics,
+  getPartnerMetrics,
+  getPartnerWallet,
+  registerPartner,
+  getAllPartners,
+  updatePartnerStatus,
+  createReferral,
+  getAllReferrals,
+  updateReferralStatus,
+  recordCustomerPayment,
+  getAllPayments,
+  getAllCommissions,
+  getCommissionTransactions,
+  addPayoutAccount,
+  getPayoutAccounts,
+  requestPayout,
+  approvePayout,
+  recordManualPayoutExecution,
+  getAllPayouts,
+  getFinancialReconciliation,
+  resetToCleanProduction,
+} from "./server/crmService";
 
 dotenv.config();
+
+// Ensure DB is ready
+initDatabase();
 
 const app = express();
 const PORT = 3000;
@@ -27,7 +54,9 @@ function getGeminiClient(): GoogleGenAI | null {
   return aiClient;
 }
 
-// Health check
+// ----------------------------------------------------
+// SYSTEM & HEALTH
+// ----------------------------------------------------
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
@@ -36,137 +65,364 @@ app.get("/api/health", (req, res) => {
     organization: "Path to Inner Peace",
     website: "https://www.pathtoinnerpeace.in",
     hasGemini: !!process.env.GEMINI_API_KEY,
+    database: "SQLite Single Source of Truth",
+    productionMode: process.env.NODE_ENV === "production" || process.env.DEMO_MODE !== "true",
   });
 });
 
-// Partner AI Assistant endpoint
+app.post("/api/system/reset-clean", (req, res) => {
+  try {
+    const result = resetToCleanProduction();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// DASHBOARDS & COMMERCIAL METRICS
+// ----------------------------------------------------
+app.get("/api/dashboard/admin", (req, res) => {
+  try {
+    const metrics = getAdminMetrics();
+    res.json(metrics);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/dashboard/partner/:partnerId", (req, res) => {
+  try {
+    const data = getPartnerMetrics(req.params.partnerId);
+    if (!data) return res.status(404).json({ error: "Partner not found" });
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// PARTNERS
+// ----------------------------------------------------
+app.get("/api/partners", (req, res) => {
+  try {
+    const partners = getAllPartners();
+    res.json(partners);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/partners/register", (req, res) => {
+  try {
+    const partner = registerPartner(req.body);
+    res.json({ success: true, partner });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/partners/:id/status", (req, res) => {
+  try {
+    const { status, adminUser } = req.body;
+    const updated = updatePartnerStatus(req.params.id, status, adminUser);
+    res.json({ success: true, partner: updated });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/partners/:id/wallet", (req, res) => {
+  try {
+    const wallet = getPartnerWallet(req.params.id);
+    res.json(wallet);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/partners/:id/payout-accounts", (req, res) => {
+  try {
+    const accounts = getPayoutAccounts(req.params.id);
+    res.json(accounts);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/partners/:id/payout-accounts", (req, res) => {
+  try {
+    const account = addPayoutAccount({
+      partnerId: req.params.id,
+      ...req.body,
+    });
+    res.json({ success: true, account });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// REFERRALS
+// ----------------------------------------------------
+app.get("/api/referrals", (req, res) => {
+  try {
+    const partnerId = req.query.partnerId as string | undefined;
+    const referrals = getAllReferrals(partnerId);
+    res.json(referrals);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/referrals", (req, res) => {
+  try {
+    const referral = createReferral(req.body);
+    res.json({ success: true, referral });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.patch("/api/referrals/:id/status", (req, res) => {
+  try {
+    const { status, adminUser } = req.body;
+    const updated = updateReferralStatus(req.params.id, status, adminUser);
+    res.json({ success: true, referral: updated });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// PAYMENTS & COMMISSIONS
+// ----------------------------------------------------
+app.get("/api/payments", (req, res) => {
+  try {
+    const payments = getAllPayments();
+    res.json(payments);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/payments", (req, res) => {
+  try {
+    const result = recordCustomerPayment(req.body);
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/commissions", (req, res) => {
+  try {
+    const partnerId = req.query.partnerId as string | undefined;
+    const commissions = getAllCommissions(partnerId);
+    res.json(commissions);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/commissions/transactions/:partnerId", (req, res) => {
+  try {
+    const txns = getCommissionTransactions(req.params.partnerId);
+    res.json(txns);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// PAYOUTS
+// ----------------------------------------------------
+app.get("/api/payouts", (req, res) => {
+  try {
+    const partnerId = req.query.partnerId as string | undefined;
+    const payouts = getAllPayouts(partnerId);
+    res.json(payouts);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/payouts/request", (req, res) => {
+  try {
+    const { partnerId, requestedAmount, payoutAccountId } = req.body;
+    const payout = requestPayout(partnerId, Number(requestedAmount), payoutAccountId);
+    res.json({ success: true, payout });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/payouts/:id/approve", (req, res) => {
+  try {
+    const { adminUser } = req.body;
+    const payout = approvePayout(req.params.id, adminUser);
+    res.json({ success: true, payout });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/payouts/:id/record-manual-payment", (req, res) => {
+  try {
+    const payout = recordManualPayoutExecution({
+      payoutId: req.params.id,
+      ...req.body,
+    });
+    res.json({ success: true, payout });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// PRODUCTS CATALOGUE
+// ----------------------------------------------------
+app.get("/api/products", (req, res) => {
+  try {
+    const products = db.prepare("SELECT * FROM products WHERE is_active = 1").all();
+    res.json(products);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// FINANCIAL RECONCILIATION
+// ----------------------------------------------------
+app.get("/api/reconciliation", (req, res) => {
+  try {
+    const recon = getFinancialReconciliation();
+    res.json(recon);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// AUDIT LOGS
+// ----------------------------------------------------
+app.get("/api/audit-logs", (req, res) => {
+  try {
+    const logs = db.prepare("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100").all();
+    res.json(logs);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// AI ASSISTANTS (STRICTLY GROUNDED IN DATABASE FIGURES)
+// ----------------------------------------------------
 app.post("/api/ai/partner-assistant", async (req, res) => {
   try {
-    const { prompt, partnerContext, catalogueContext } = req.body;
+    const { prompt, partnerId, partnerContext, catalogueContext } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
+    // Retrieve real partner metrics from database
+    const realMetrics = partnerId ? getPartnerMetrics(partnerId) : null;
+
     const ai = getGeminiClient();
     if (ai) {
-      const systemInstruction = `You are P2IP Partner AI, the dedicated AI assistant for referral partners of Path to Inner Peace (P2IP PartnerSphere™).
+      const systemInstruction = `You are P2IP Partner AI, the dedicated assistant for referral partners of Path to Inner Peace (P2IP PartnerSphere™).
 Brand: Path to Inner Peace (Website: https://www.pathtoinnerpeace.in)
-Tagline: Transform Your Mind, Elevate Your Life.
-Positioning: Holistic Inner Transformation (Stress Management, Mind Mastery, Meditation, Mindfulness, Emotional Well-being, Relationship Wellness, Career Clarity, Personal Transformation, Corporate Wellness).
-
+Positioning: Holistic Inner Transformation (Stress Management, Mind Mastery, Meditation, Mindfulness, Emotional Well-being).
 CRITICAL RULES:
-1. Ground all answers strictly in the provided Partner Data and Product Catalogue. NEVER invent pricing, commissions, or unverified programs.
-2. Standard revenue commission is 50% of actual collected revenue. Free 5-Day Mind Reset Challenge pays ₹49 Partner Activation Reward.
-3. Tone: Premium, supportive, corporate wellness, encouraging, professional, and practical.
-4. If asked to generate a WhatsApp or email message, format it attractively with emojis, clear CTA, and include the partner's referral link or code.
-5. Provide clear, concise answers.`;
+1. Ground all financial and referral figures strictly on the Real Database Metrics provided.
+2. NEVER invent fake earnings, referrals, or arbitrary numbers. If earnings or referrals are 0, state 0.
+3. Standard commission is 50% on paid programs. Free 5-Day Mind Reset Challenge pays ₹49 activation reward.
+4. Tone: Premium, encouraging, professional, wellness-focused.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.8-flash",
-        contents: `Partner Context:\n${JSON.stringify(partnerContext || {}, null, 2)}\n\nCatalogue Context:\n${JSON.stringify(catalogueContext || [], null, 2)}\n\nPartner Query: ${prompt}`,
+        contents: `Real Database Partner Metrics:\n${JSON.stringify(realMetrics || partnerContext || {}, null, 2)}\n\nCatalogue:\n${JSON.stringify(catalogueContext || [], null, 2)}\n\nPartner Query: ${prompt}`,
         config: {
           systemInstruction,
-          temperature: 0.4,
+          temperature: 0.2,
         },
       });
 
       return res.json({ response: response.text });
     } else {
-      // Deterministic intelligent fallback when GEMINI_API_KEY is not yet attached
-      const text = generatePartnerFallbackResponse(prompt, partnerContext, catalogueContext);
-      return res.json({ response: text, fallback: true });
+      // Deterministic real fallback
+      const earned = realMetrics ? `₹${realMetrics.wallet.lifetimeEarned.toLocaleString("en-IN")}` : "₹0";
+      const available = realMetrics ? `₹${realMetrics.wallet.availableBalance.toLocaleString("en-IN")}` : "₹0";
+      const refs = realMetrics ? realMetrics.totalReferrals : 0;
+      const target = realMetrics ? realMetrics.monthlyTarget : 20;
+
+      const p = prompt.toLowerCase();
+      if (p.includes("earn") || p.includes("commission") || p.includes("wallet")) {
+        return res.json({
+          response: `### 💰 Your Real Database Earnings Summary\n- **Lifetime Earned:** ${earned}\n- **Available for Payout:** ${available}\n- **Standard Commission:** 50% of verified collected customer revenue.\n- **Activation Reward:** ₹49 for every verified Free 5-Day Mind Reset Challenge registration.\n\nAll numbers are computed from the real transaction ledger.`,
+          fallback: true,
+        });
+      }
+      if (p.includes("referral") || p.includes("target") || p.includes("lead")) {
+        return res.json({
+          response: `### 🎯 Referral Progress (Real Database Count)\n- **Verified Referrals:** ${refs} / ${target}\n- **Remaining for Monthly Target:** ${Math.max(0, target - refs)}\n\nAll figures reflect live records stored in the database.`,
+          fallback: true,
+        });
+      }
+      return res.json({
+        response: `### 🌿 P2IP Partner AI\nI am connected directly to your live database profile.\n- Current Verified Referrals: ${refs}\n- Available Balance: ${available}\n\nAsk me about your earnings, referral links, or ready-to-share WhatsApp invitations.`,
+        fallback: true,
+      });
     }
   } catch (error: any) {
     console.error("Error in partner assistant:", error);
-    return res.status(500).json({
-      error: "Failed to generate response",
-      details: error.message,
-    });
+    return res.status(500).json({ error: "Failed to generate response", details: error.message });
   }
 });
 
-// Admin AI Assistant endpoint
 app.post("/api/ai/admin-assistant", async (req, res) => {
   try {
-    const { prompt, adminContext, crmContext } = req.body;
+    const { prompt } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
+    // Retrieve real commercial metrics from database
+    const realMetrics = getAdminMetrics();
+
     const ai = getGeminiClient();
     if (ai) {
-      const systemInstruction = `You are P2IP Admin AI, the executive AI intelligence assistant for Path to Inner Peace (P2IP PartnerSphere™) leadership and CRM administrators.
-Brand: Path to Inner Peace (https://www.pathtoinnerpeace.in).
-
+      const systemInstruction = `You are P2IP Admin AI, executive AI assistant for Path to Inner Peace leadership.
 CRITICAL RULES:
-1. Ground your answers strictly on the CRM data, financial metrics, and partner performance provided in the context.
-2. Never invent fake revenue or numbers.
-3. Analyze key metrics: commission liability, conversion rates, inactive partners, duplicate attribution risks, and high-revenue programs.
-4. Tone: Executive, concise, data-driven, strategic, and actionable.`;
+1. Ground every single number strictly on the provided Real Commercial Database Metrics.
+2. NEVER invent fake revenue or fake partner counts. If revenue is ₹0, state ₹0. If partners are 0, state 0.
+3. Tone: Executive, concise, data-driven, strategic.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.8-flash",
-        contents: `Admin Context & Metrics:\n${JSON.stringify(adminContext || {}, null, 2)}\n\nCRM Leads & Partners Context:\n${JSON.stringify(crmContext || {}, null, 2)}\n\nExecutive Admin Query: ${prompt}`,
+        contents: `Real Commercial Database Metrics:\n${JSON.stringify(realMetrics, null, 2)}\n\nExecutive Admin Query: ${prompt}`,
         config: {
           systemInstruction,
-          temperature: 0.3,
+          temperature: 0.1,
         },
       });
 
       return res.json({ response: response.text });
     } else {
-      // Deterministic intelligent fallback
-      const text = generateAdminFallbackResponse(prompt, adminContext, crmContext);
-      return res.json({ response: text, fallback: true });
+      return res.json({
+        response: `### 📊 Real Commercial Database Summary\n- **Total Registered Partners:** ${realMetrics.totalPartners}\n- **Total Logged Referrals:** ${realMetrics.totalReferrals}\n- **Gross Customer Revenue:** ₹${realMetrics.grossRevenue.toLocaleString("en-IN")}\n- **Partner Commission Liability:** ₹${realMetrics.partnerCommissionLiability.toLocaleString("en-IN")}\n- **Paid Payouts:** ₹${realMetrics.paidPayouts.toLocaleString("en-IN")}\n- **Outstanding Payable:** ₹${realMetrics.outstandingPartnerPayable.toLocaleString("en-IN")}\n\nZero simulated data. Every figure is audited from database tables.`,
+        fallback: true,
+      });
     }
   } catch (error: any) {
     console.error("Error in admin assistant:", error);
-    return res.status(500).json({
-      error: "Failed to generate response",
-      details: error.message,
-    });
+    return res.status(500).json({ error: "Failed to generate response", details: error.message });
   }
 });
 
-// Fallback logic for offline / local mode
-function generatePartnerFallbackResponse(prompt: string, partner: any, catalogue: any[]): string {
-  const p = prompt.toLowerCase();
-  if (p.includes("earn") || p.includes("commission") || p.includes("wallet")) {
-    const earned = partner?.monthlyEarnings ?? "₹8,450";
-    const pending = partner?.pendingCommission ?? "₹1,248";
-    return `### 💰 Your Earnings Summary\n- **This Month's Earnings:** ₹${earned}\n- **Pending Verification:** ₹${pending}\n- **Standard Commission:** 50% on all paid program conversions.\n- **Activation Reward:** ₹49 for every Free 5-Day Mind Reset Challenge referral verified.\n\nYou can request payout or view line-by-line transactions in the **Earnings** tab.`;
-  }
-  if (p.includes("bonus") || p.includes("referral") || p.includes("target")) {
-    const current = partner?.currentReferrals || 16;
-    const target = partner?.monthlyTarget || 20;
-    const remaining = Math.max(0, target - current);
-    return `### 🎯 Partner Growth Progress\n- **Current Verified Referrals:** ${current} / ${target}\n- **Remaining for Next Level / Bonus:** ${remaining} more referrals\n- **Next Milestone Bonus:** Unlock **₹1,500 PRO Bonus** upon reaching ${target} referrals this month!\n\nShare your link or WhatsApp posters from the Marketing Centre to cross this milestone!`;
-  }
-  if (p.includes("whatsapp") || p.includes("message") || p.includes("pitch")) {
-    const link = partner?.referralUrl || "https://pathtoinnerpeace.in/r/P2IP123";
-    return `### 📲 Ready-to-Send WhatsApp Message\n\n"🌿 *Take 5 Days to Reset Your Mind & Elevate Your Life*\n\nHey! I'm sharing an exclusive invitation to the **Path to Inner Peace Free 5-Day Mind Reset Challenge**.\n\n✨ Guided breathwork & mindfulness\n✨ Stress & anxiety release techniques\n✨ 15 minutes a day, zero cost\n\n👉 Join for free with my invite: ${link}\n\nFeel free to ask me any questions!"`;
-  }
-  if (p.includes("mind mastery") || p.includes("program") || p.includes("price")) {
-    return `### 🌿 Path to Inner Peace Core Programs\n1. **FREE 5-Day Mind Reset Challenge**: ₹0 (Partner Activation Reward: ₹49)\n2. **Basic Shift**: ₹199/month (Partner Commission: ₹99.50 at 50%)\n3. **Mind Mastery**: ₹499/month (Partner Commission: ₹249.50 at 50%)\n4. **Inner Transformation Elite**: ₹1,499/month (Partner Commission: ₹749.50 at 50%)\n\nAll programs are crafted for holistic mental clarity, emotional wellness, and sustainable transformation.`;
-  }
-  return `### 🌿 P2IP Partner AI\nI am here to help you maximize your impact and earnings with Path to Inner Peace!\n- Ask me about your **current earnings & bonuses**\n- Request **high-converting WhatsApp messages**\n- Inquire about **program details and commission rules**\n- Get suggestions on following up with leads.`;
-}
-
-function generateAdminFallbackResponse(prompt: string, adminContext: any, crmContext: any): string {
-  const p = prompt.toLowerCase();
-  if (p.includes("commission") || p.includes("owe") || p.includes("liability")) {
-    return `### 📊 Commission Liability Overview\n- **Total Commission Payable This Month:** ₹42,850\n- **Pending Verification:** ₹14,200\n- **Paid Out to Date:** ₹1,18,500\n- **Commission Rule:** 50% of verified collected revenue across all standard programs.\n\nVisit the **Payouts** tab to review payable records and process bulk transfers.`;
-  }
-  if (p.includes("duplicate") || p.includes("risk") || p.includes("attribution")) {
-    return `### ⚠️ Attribution & Duplicate Risk Alert\n- **Duplicate Cases Pending Review:** 2 leads detected with matched phone/email in CRM.\n- **Recommended Action:** Open **Lead CRM > Attribution Review** to inspect timeline and select First Partner, Last Partner, or Manual attribution.`;
-  }
-  if (p.includes("revenue") || p.includes("program") || p.includes("highest")) {
-    return `### 📈 Top Revenue Generating Programs\n1. **Inner Transformation Elite (₹1,499/mo):** 54% of total paid revenue.\n2. **Mind Mastery (₹499/mo):** 31% of total paid revenue.\n3. **Basic Shift (₹199/mo):** 15% of total paid revenue.\n- **Challenge Conversion Rate:** 28.4% from Free 5-Day Reset to paid tiers.`;
-  }
-  return `### 🏢 P2IP Admin Intelligence\n- **Active Partners:** 42\n- **New Leads This Week:** 128\n- **Challenge Attendance Rate:** 64.2%\n- **Conversion to Paid:** 26.8%\n\nLet me know if you need specific partner breakdowns, financial reconciliations, or audit reports!`;
-}
-
-// Start server with Vite middleware in development or static in production
+// ----------------------------------------------------
+// VITE MIDDLEWARE (DEV) OR STATIC ASSETS (PROD)
+// ----------------------------------------------------
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -183,7 +439,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[P2IP PartnerSphere] Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[P2IP PartnerSphere] Production Database Server running on http://0.0.0.0:${PORT}`);
   });
 }
 

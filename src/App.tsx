@@ -119,10 +119,15 @@ const AppContent: React.FC = () => {
       <div className="flex-1 flex max-w-[1600px] w-full mx-auto">
         <Sidebar />
 
-        {/* Scrollable Core View Container */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl pb-24 md:pb-12 overflow-y-auto">
-          {renderView()}
-        </main>
+        {/* Core View Container with Clean Footer */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full pb-20 md:pb-8 overflow-y-auto">
+            {renderView()}
+          </main>
+          <footer className="hidden md:block py-2.5 px-6 border-t border-gray-100 text-center text-[11px] text-gray-400">
+            © {new Date().getFullYear()} Path to Inner Peace (P2IP) • All rights reserved
+          </footer>
+        </div>
       </div>
 
       {/* Mobile-first bottom navigation */}

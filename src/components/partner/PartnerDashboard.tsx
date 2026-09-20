@@ -58,9 +58,7 @@ export const PartnerDashboard: React.FC = () => {
     .reduce((acc, c) => acc + c.commissionAmount, 0);
 
   // Real monthly counts strictly based on actual data
-  const currentReferrals = partnerLeads.length > 0
-    ? partnerLeads.length
-    : (currentPartner.currentMonthlyReferrals ?? 0);
+  const currentReferrals = partnerLeads.length;
   const target = currentPartner.monthlyTarget || 20;
   const progressPercent = target > 0 ? Math.min(100, Math.round((currentReferrals / target) * 100)) : 0;
   const referralsNeeded = Math.max(0, target - currentReferrals);

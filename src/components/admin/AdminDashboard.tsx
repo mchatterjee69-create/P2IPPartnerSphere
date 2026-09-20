@@ -174,7 +174,7 @@ export const AdminDashboard: React.FC = () => {
             </span>
             <div className="text-2xl font-extrabold text-[#0F5132]">{activePartners}</div>
             <div className="text-[10px] text-emerald-700 font-semibold mt-1">
-              {Math.round((activePartners / totalPartners) * 100)}% active rate
+              {totalPartners > 0 ? Math.round((activePartners / totalPartners) * 100) : 0}% active rate
             </div>
           </div>
 
@@ -294,34 +294,46 @@ export const AdminDashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-gray-700">
-              {partners.slice(0, 5).map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50 transition">
-                  <td className="py-3 px-4">
-                    <div className="font-bold text-gray-900">{p.name}</div>
-                    <div className="text-[11px] text-gray-500">{p.organisation}</div>
-                  </td>
-                  <td className="py-3 px-4 font-medium">{p.partnerType}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#D4AF37]/20 text-[#8B6508]">
-                      {p.level}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-center font-mono font-bold text-[#0F5132]">
-                    {p.currentMonthlyReferrals} / {p.monthlyTarget}
-                  </td>
-                  <td className="py-3 px-4 text-right font-medium">
-                    ₹{p.lifetimeRevenue.toLocaleString("en-IN")}
-                  </td>
-                  <td className="py-3 px-4 text-right font-extrabold text-[#0F5132]">
-                    ₹{p.lifetimeCommission.toLocaleString("en-IN")}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                      {p.status}
-                    </span>
+              {partners.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-gray-500">
+                    <div className="flex flex-col items-center justify-center">
+                      <Users className="w-8 h-8 text-gray-300 mb-2" />
+                      <p className="font-semibold text-gray-700">No registered partners yet</p>
+                      <p className="text-xs text-gray-400 mt-0.5">When partners register or are created, they will appear here with audited numbers.</p>
+                    </div>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                partners.slice(0, 5).map((p) => (
+                  <tr key={p.id} className="hover:bg-gray-50 transition">
+                    <td className="py-3 px-4">
+                      <div className="font-bold text-gray-900">{p.name}</div>
+                      <div className="text-[11px] text-gray-500">{p.organisation}</div>
+                    </td>
+                    <td className="py-3 px-4 font-medium">{p.partnerType}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#D4AF37]/20 text-[#8B6508]">
+                        {p.level}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center font-mono font-bold text-[#0F5132]">
+                      {p.currentMonthlyReferrals} / {p.monthlyTarget}
+                    </td>
+                    <td className="py-3 px-4 text-right font-medium">
+                      ₹{p.lifetimeRevenue.toLocaleString("en-IN")}
+                    </td>
+                    <td className="py-3 px-4 text-right font-extrabold text-[#0F5132]">
+                      ₹{p.lifetimeCommission.toLocaleString("en-IN")}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                        {p.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

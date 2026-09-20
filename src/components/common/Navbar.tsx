@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useApp } from "../../context/AppContext";
 import { BrandLogo } from "./BrandLogo";
 import { AdminAuthModal } from "./AdminAuthModal";
+import { HeaderDocMenu } from "./HeaderDocMenu";
 import {
   Bell,
   QrCode,
@@ -238,6 +239,9 @@ export const Navbar: React.FC = () => {
               <LogOut className="w-4 h-4 text-gray-500 hover:text-red-600" />
               <span className="hidden sm:inline">Sign Out</span>
             </button>
+
+            {/* Header Right Side 3-Dots Documentation & Support Menu */}
+            <HeaderDocMenu theme="light" />
           </div>
         </div>
 

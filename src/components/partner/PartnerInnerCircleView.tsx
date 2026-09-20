@@ -65,7 +65,7 @@ export const PartnerInnerCircleView: React.FC = () => {
             <div className="text-[10px] font-bold text-emerald-200 uppercase">Step 1</div>
             <div className="text-sm font-bold text-white">You Refer Client A</div>
             <p className="text-emerald-100/80 text-[11px] leading-relaxed">
-              You introduce Rajesh to the Free 5-Day Mind Reset Challenge or Mind Mastery program.
+              You introduce your client to the Free 5-Day Mind Reset Challenge or Mind Mastery program.
             </p>
           </div>
 
@@ -74,7 +74,7 @@ export const PartnerInnerCircleView: React.FC = () => {
             <div className="text-[10px] font-bold text-emerald-200 uppercase">Step 2</div>
             <div className="text-sm font-bold text-white">Client A Invites Friends</div>
             <p className="text-emerald-100/80 text-[11px] leading-relaxed">
-              Rajesh experiences deep stress relief and shares his personal invite link with friends (Client B).
+              Your client experiences deep stress relief and shares their personal invite link with friends (Client B).
             </p>
           </div>
 

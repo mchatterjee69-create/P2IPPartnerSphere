@@ -82,7 +82,7 @@ export const AdminCommissionPayout: React.FC = () => {
       .map((c) => {
         const partner = partners.find((p) => p.id === c.partnerId);
         const bank = partner?.bankDetails;
-        return `"${c.id}","${c.partnerId}","${c.partnerName}","${bank?.bankName || "HDFC Bank"}","${
+        return `"${c.id}","${c.partnerId}","${c.partnerName}","${bank?.bankName || "N/A"}","${
           bank?.upiId || ""
         }","${bank?.accountNumber || ""}","${bank?.ifscCode || ""}",${c.commissionAmount},"${
           c.clientName
@@ -230,7 +230,20 @@ export const AdminCommissionPayout: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-gray-700">
-              {filteredCommissions.map((c) => (
+              {filteredCommissions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-gray-500">
+                    <div className="flex flex-col items-center justify-center">
+                      <CreditCard className="w-8 h-8 text-gray-300 mb-2" />
+                      <p className="font-semibold text-gray-700">No commission records yet</p>
+                      <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
+                        Commissions are generated automatically upon verified customer payments (50% revenue share) or completed challenge attendance (₹49 activation reward).
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredCommissions.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-50 transition">
                   <td className="py-3 px-4 font-mono font-bold text-[#0F5132]">
                     {c.id}
@@ -322,7 +335,7 @@ export const AdminCommissionPayout: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

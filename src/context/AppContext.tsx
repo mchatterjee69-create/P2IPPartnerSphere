@@ -163,7 +163,43 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_KEY = "p2ip_partnersphere_state_v1";
+// Purge all legacy caches to guarantee zero ghost/demo data survives in any user's browser
+if (typeof window !== "undefined" && window.localStorage) {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && !k.startsWith("p2ip_crm_prod_v3_clean")) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch (e) {}
+}
+
+const STORAGE_KEY = "p2ip_crm_prod_v3_clean";
+
+const FAKE_PATTERNS = /Anita|Kunal|Khurana|Tanya|Shashank|Singhal|Rohan|Priya|Vikram|Sneha|Rajesh/i;
+
+const isGenuineLead = (l: any): boolean => {
+  if (!l || !l.id) return false;
+  if (typeof l.id === "string" && l.id.startsWith("P2IP-REF-0001")) return false;
+  if (FAKE_PATTERNS.test(l.clientName || "") || FAKE_PATTERNS.test(l.partnerName || "")) return false;
+  return true;
+};
+
+const isGenuineCommission = (c: any): boolean => {
+  if (!c || !c.id) return false;
+  if (
+    typeof c.id === "string" &&
+    (c.id.startsWith("P2IP-COM-0004") ||
+      c.id.startsWith("P2IP-COM-0001") ||
+      c.id.startsWith("COMM-TEST"))
+  )
+    return false;
+  if (FAKE_PATTERNS.test(c.clientName || "") || FAKE_PATTERNS.test(c.partnerName || "")) return false;
+  return true;
+};
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load saved state or default to seed data
@@ -179,8 +215,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {}
     return "partner";
   });
+
   const [partners, setPartners] = useState<Partner[]>(() => {
-    // Purge fake demo partner seeds from localStorage to ensure strictly genuine partners
     const FAKE_PARTNER_CODES = new Set([
       "FRESHZERO",
       "P2IP123",
@@ -203,7 +239,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (p) =>
             !FAKE_PARTNER_CODES.has(p.code) &&
             !p.id.startsWith("P2IP-PT-001") &&
-            p.id !== "P2IP-PT-00999"
+            p.id !== "P2IP-PT-00999" &&
+            !FAKE_PATTERNS.test(p.name || "")
         );
         return genuine;
       } catch (e) {
@@ -214,7 +251,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [authSession, setAuthSession] = useState<AuthSession>(() => {
-    // Starts with Partner Authentication Gateway form screen.
     try {
       const active = sessionStorage.getItem(`${STORAGE_KEY}_auth_session_active`);
       if (active) {
@@ -249,7 +285,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [leads, setLeads] = useState<Lead[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY}_leads`);
-    return saved ? JSON.parse(saved) : INITIAL_LEADS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.filter(isGenuineLead) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
   });
 
   const [products, setProducts] = useState<Product[]>(() => {
@@ -259,18 +303,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [commissions, setCommissions] = useState<Commission[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY}_commissions`);
-    return saved ? JSON.parse(saved) : INITIAL_COMMISSIONS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.filter(isGenuineCommission) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
   });
 
   const [partnerLevels, setPartnerLevels] = useState<PartnerLevelConfig[]>(INITIAL_PARTNER_LEVELS);
   const [campaigns, setCampaigns] = useState<Campaign[]>(INITIAL_CAMPAIGNS);
-  const [clientNodes, setClientNodes] = useState<ClientReferralNode[]>(INITIAL_CLIENT_NODES);
+  const [clientNodes, setClientNodes] = useState<ClientReferralNode[]>([]);
   const [marketingAssets] = useState<MarketingAsset[]>(INITIAL_MARKETING_ASSETS);
-  const [followups, setFollowups] = useState<FollowupTask[]>(INITIAL_FOLLOWUPS);
+  const [followups, setFollowups] = useState<FollowupTask[]>([]);
   const [automationRules, setAutomationRules] = useState<AutomationRule[]>(INITIAL_AUTOMATION_RULES);
-  const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
-  const [payouts, setPayouts] = useState<PayoutRecord[]>(INITIAL_PAYOUTS);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOGS);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [payouts, setPayouts] = useState<PayoutRecord[]>(() => {
+    const saved = localStorage.getItem(`${STORAGE_KEY}_payouts`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.filter((p: any) => !FAKE_PATTERNS.test(p.partnerName || "")) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [businessRules, setBusinessRules] = useState<BusinessRulesSettings>(INITIAL_BUSINESS_RULES);
 
   const [activeTab, setActiveTab] = useState<string>("dashboard");
@@ -282,6 +345,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
+  // Synchronize state with SQLite backend single source of truth on mount
+  useEffect(() => {
+    let active = true;
+    async function syncBackend() {
+      try {
+        const [pRes, rRes, cRes, payRes] = await Promise.all([
+          fetch("/api/partners"),
+          fetch("/api/referrals"),
+          fetch("/api/commissions"),
+          fetch("/api/payouts"),
+        ]);
+        if (!active) return;
+        if (pRes.ok) {
+          const data = await pRes.json();
+          if (Array.isArray(data)) {
+            const clean = data.filter((p: any) => !FAKE_PATTERNS.test(p.name || "") && !p.id.startsWith("P2IP-PT-001"));
+            setPartners(clean);
+          }
+        }
+        if (rRes.ok) {
+          const data = await rRes.json();
+          if (Array.isArray(data)) {
+            setLeads(data.filter(isGenuineLead));
+          }
+        }
+        if (cRes.ok) {
+          const data = await cRes.json();
+          if (Array.isArray(data)) {
+            setCommissions(data.filter(isGenuineCommission));
+          }
+        }
+        if (payRes.ok) {
+          const data = await payRes.json();
+          if (Array.isArray(data)) {
+            setPayouts(data.filter((p: any) => !FAKE_PATTERNS.test(p.partnerName || "")));
+          }
+        }
+      } catch (err) {
+        console.warn("Backend sync skipped:", err);
+      }
+    }
+    syncBackend();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Sync to local storage
   useEffect(() => {
     try {
@@ -289,6 +399,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(`${STORAGE_KEY}_leads`, JSON.stringify(leads));
       localStorage.setItem(`${STORAGE_KEY}_products`, JSON.stringify(products));
       localStorage.setItem(`${STORAGE_KEY}_commissions`, JSON.stringify(commissions));
+      localStorage.setItem(`${STORAGE_KEY}_payouts`, JSON.stringify(payouts));
       if (authSession.isAuthenticated) {
         sessionStorage.setItem(`${STORAGE_KEY}_auth_session_active`, JSON.stringify(authSession));
       } else {
@@ -298,7 +409,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.warn("Could not save to localStorage", e);
     }
-  }, [partners, leads, products, commissions, authSession]);
+  }, [partners, leads, products, commissions, payouts, authSession]);
 
   const setCurrentPartner = (partner: Partner) => {
     setCurrentPartnerState(partner);
@@ -340,7 +451,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return matchMobile || matchEmail;
     });
 
-    const refNumber = leads.length + 185;
+    const refNumber = leads.length + 1;
     const referralId = `P2IP-REF-${String(refNumber).padStart(6, "0")}`;
     const targetPartner = partners.find((p) => p.id === input.partnerId) || currentPartner;
     const prod = products.find((p) => p.id === input.interestedProgramId);
@@ -382,6 +493,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setLeads((prev) => [newLead, ...prev]);
+
+    // Async persist to SQLite backend
+    try {
+      fetch("/api/referrals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partnerId: targetPartner.id,
+          partnerName: targetPartner.name,
+          clientName: input.clientName,
+          mobile: input.mobile,
+          email: input.email,
+          location: input.location || "India",
+          programId: input.interestedProgramId,
+          programName: prod?.name || "FREE 5-Day Mind Reset Challenge",
+          source: input.referralSource || "Direct Partner Referral",
+          notes: input.notes,
+        }),
+      }).catch((e) => console.warn("Referral backend sync:", e));
+    } catch (e) {}
 
     // If duplicate, notify Admin and DO NOT assign commission
     if (isDuplicate) {
@@ -660,6 +791,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return p;
       })
     );
+
+    // Persist to backend SQLite database
+    try {
+      fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          referralId: lead.id,
+          productId: prod.id,
+          productName: prod.name,
+          amountPaid: amount,
+          paymentMethod: "Online Checkout",
+          referenceNotes: `Client: ${lead.clientName}`,
+        }),
+      }).catch((e) => console.warn("Payment backend sync:", e));
+    } catch (e) {}
 
     addAuditLog(
       "PAYMENT_AND_COMMISSION_CREATED",
@@ -1362,6 +1509,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Partner self-registered with Referral ID: ${cleanCode} and self-created 2-step authentication PIN.`
     );
 
+    // Persist to backend database
+    try {
+      fetch("/api/partners/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newPartner.name,
+          email: newPartner.email,
+          mobile: newPartner.mobile,
+          partnerType: newPartner.partnerType,
+          organization: newPartner.organisation,
+          referralCode: newPartner.code,
+          preferredRate: 50,
+          notes: "Self-registered via Portal",
+        }),
+      }).catch((e) => console.warn("Backend register sync:", e));
+    } catch (e) {}
+
     return { success: true, partner: newPartner };
   };
 
@@ -1419,30 +1584,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {}
   };
 
-  const resetToDemoData = () => {
-    setPartners(INITIAL_PARTNERS);
-    setCurrentPartnerState(INITIAL_PARTNERS[0]);
+  const resetToDemoData = async () => {
+    try {
+      await fetch("/api/system/reset-clean", { method: "POST" });
+    } catch (e) {
+      console.warn("Server reset clean request failed or offline", e);
+    }
+    setPartners([]);
+    setCurrentPartnerState(EMPTY_GENUINE_PARTNER);
     setProducts(INITIAL_PRODUCTS);
-    setLeads(INITIAL_LEADS);
-    setCommissions(INITIAL_COMMISSIONS);
+    setLeads([]);
+    setCommissions([]);
     setPartnerLevels(INITIAL_PARTNER_LEVELS);
     setCampaigns(INITIAL_CAMPAIGNS);
-    setClientNodes(INITIAL_CLIENT_NODES);
-    setFollowups(INITIAL_FOLLOWUPS);
+    setClientNodes([]);
+    setFollowups([]);
     setAutomationRules(INITIAL_AUTOMATION_RULES);
-    setNotifications(INITIAL_NOTIFICATIONS);
-    setPayouts(INITIAL_PAYOUTS);
-    setAuditLogs(INITIAL_AUDIT_LOGS);
+    setNotifications([]);
+    setPayouts([]);
+    setAuditLogs([]);
     setBusinessRules(INITIAL_BUSINESS_RULES);
     setAuthSession({
-      isAuthenticated: true,
+      isAuthenticated: false,
       role: "partner",
-      partnerId: INITIAL_PARTNERS[0].id,
-      partnerCode: INITIAL_PARTNERS[0].code,
-      partnerName: INITIAL_PARTNERS[0].name,
-      loginTimestamp: new Date().toISOString(),
     });
     localStorage.clear();
+    sessionStorage.clear();
   };
 
   return (

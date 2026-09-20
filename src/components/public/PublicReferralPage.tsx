@@ -63,16 +63,18 @@ export const PublicReferralPage: React.FC = () => {
       </div>
 
       {/* Navigation / Header */}
-      <header className="bg-white border-b border-gray-100 py-4 px-4 sm:px-8">
+      <header className="bg-white border-b border-gray-100 py-3.5 px-4 sm:px-8">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <BrandLogo showTagline={true} />
 
-          <button
-            onClick={() => setActiveTab("dashboard")}
-            className="text-xs font-semibold text-[#0F5132] hover:underline cursor-pointer"
-          >
-            ← Return to PartnerSphere App
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setActiveTab("dashboard")}
+              className="text-xs font-semibold text-[#0F5132] hover:underline cursor-pointer"
+            >
+              ← Return to App
+            </button>
+          </div>
         </div>
       </header>
 
@@ -293,24 +295,10 @@ export const PublicReferralPage: React.FC = () => {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-200 py-6 px-4 bg-white text-center text-xs text-gray-500">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div>
-            © {new Date().getFullYear()} Path to Inner Peace (P2IP). All rights reserved.
-          </div>
-          <div className="flex items-center gap-4">
-            <a
-              href="https://www.pathtoinnerpeace.in"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[#0F5132] font-semibold hover:underline"
-            >
-              www.pathtoinnerpeace.in
-            </a>
-            <span>•</span>
-            <span>Tagline: Transform Your Mind, Elevate Your Life.</span>
-          </div>
+      {/* Clean Minimal Footer */}
+      <footer className="border-t border-gray-100 py-3.5 px-4 bg-white text-center text-xs text-gray-400">
+        <div className="max-w-6xl mx-auto">
+          © {new Date().getFullYear()} Path to Inner Peace (P2IP) • All rights reserved
         </div>
       </footer>
     </div>

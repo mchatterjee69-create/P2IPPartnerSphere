@@ -250,16 +250,6 @@ export const AuthPortal: React.FC = () => {
               <span>Register Now</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </a>
-
-            <a
-              href="https://www.pathtoinnerpeace.in"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden md:flex items-center gap-1 text-xs text-emerald-100 hover:text-white transition ml-1"
-            >
-              <span>Website</span>
-              <ArrowRight className="w-3 h-3" />
-            </a>
           </div>
         </div>
       </header>
@@ -930,10 +920,10 @@ export const AuthPortal: React.FC = () => {
       </main>
       )}
 
-      {/* Footer */}
-      <footer className="py-4 text-center text-xs text-gray-500 border-t border-gray-200 bg-white">
+      {/* Clean Minimal Footer */}
+      <footer className="py-3 text-center text-xs text-gray-400 border-t border-gray-100 bg-white">
         <p>
-          © {new Date().getFullYear()} Path to Inner Peace (P2IP). Accredited Partner Relationship & Attribution Network.
+          © {new Date().getFullYear()} Path to Inner Peace (P2IP) • All rights reserved
         </p>
       </footer>
 

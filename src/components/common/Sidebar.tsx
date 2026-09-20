@@ -190,32 +190,11 @@ export const Sidebar: React.FC = () => {
         </button>
       </div>
 
-      {/* Official Brand Footer */}
-      <div className="p-3 border-t border-gray-100 bg-[#FBFBFA] text-[11px] text-gray-500 space-y-1">
-        <div className="flex items-center justify-between">
-          <a
-            href="https://www.pathtoinnerpeace.in"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#0F5132] font-semibold hover:underline flex items-center gap-1"
-          >
-            pathtoinnerpeace.in
-            <ExternalLink className="w-2.5 h-2.5" />
-          </a>
-          <button
-            onClick={() => setIsTermsOpen(true)}
-            className="text-[10px] font-medium text-gray-500 hover:text-[#0F5132] underline"
-          >
-            Partner Terms
-          </button>
-        </div>
-        <div className="text-[10px] text-gray-600 flex items-center gap-1 truncate">
-          <PhoneCall className="w-3 h-3 text-[#0F5132]" />
-          <span>WhatsApp: 9163670300</span>
-        </div>
-        <div className="text-[9px] text-gray-400">
-          connect@pathtoinnerpeace.in
-        </div>
+      {/* Clean Minimal Brand Footer */}
+      <div className="py-2.5 px-3 border-t border-gray-100 bg-[#FBFBFA] text-center">
+        <p className="text-[10px] text-gray-400 font-medium">
+          © {new Date().getFullYear()} Path to Inner Peace
+        </p>
       </div>
     </aside>
   );
