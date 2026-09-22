@@ -7,7 +7,6 @@ import {
   ExternalLink,
   PhoneCall,
   Mail,
-  Sparkles,
   RotateCcw,
   Scale,
   BookOpen,
@@ -289,23 +288,6 @@ export const HeaderDocMenu: React.FC<HeaderDocMenuProps> = ({ theme = "light" })
                 </>
               ) : (
                 <>
-                  <button
-                    onClick={() => handleNavigate("partner-with-us")}
-                    className="w-full flex items-start gap-2.5 p-2 rounded-xl text-left hover:bg-emerald-50/70 transition cursor-pointer group"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/20 text-[#0F5132] flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-[#0F5132] group-hover:text-[#F5D77F] transition">
-                      <Sparkles className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-gray-900 group-hover:text-[#0F5132] transition">
-                        Partner With Us Guide
-                      </div>
-                      <p className="text-[10px] text-gray-500 leading-snug">
-                        Refer & Earn benefits for Yoga, Ayurveda, Gym & Coaches
-                      </p>
-                    </div>
-                  </button>
-
                   <button
                     onClick={() => handleNavigate("marketing")}
                     className="w-full flex items-start gap-2.5 p-2 rounded-xl text-left hover:bg-emerald-50/70 transition cursor-pointer group"

@@ -23,8 +23,16 @@ import {
   HelpCircle,
   CheckSquare,
   LogOut,
-  Sparkles,
 } from "lucide-react";
+
+interface SidebarNavItem {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: number | string;
+  badgeAlert?: boolean;
+  highlight?: boolean;
+}
 
 export const Sidebar: React.FC = () => {
   const { currentRole, activeTab, setActiveTab, currentPartner, leads, commissions, followups, setIsTermsOpen, logout } = useApp();
@@ -39,7 +47,7 @@ export const Sidebar: React.FC = () => {
     return null;
   }
 
-  const partnerLinks = [
+  const partnerLinks: SidebarNavItem[] = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     {
       id: "leads",
@@ -58,12 +66,11 @@ export const Sidebar: React.FC = () => {
     { id: "inner-circle", label: "Inner Circle Loop", icon: Share2 },
     { id: "marketing", label: "Marketing Centre", icon: Megaphone },
     { id: "analytics", label: "Partner Analytics", icon: BarChart3 },
-    { id: "partner-with-us", label: "Partner With Us (Refer & Earn)", icon: Sparkles, highlight: true },
     { id: "partner-ai", label: "P2IP Partner AI", icon: Bot },
     { id: "profile", label: "Partner Profile & QR", icon: User },
   ];
 
-  const adminLinks = [
+  const adminLinks: SidebarNavItem[] = [
     { id: "admin-dashboard", label: "Executive Overview", icon: LayoutDashboard },
     {
       id: "admin-leads",

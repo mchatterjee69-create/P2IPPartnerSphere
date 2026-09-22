@@ -217,13 +217,13 @@ export const PartnerWithUsView: React.FC = () => {
         <div className="relative z-10 p-6 sm:p-10 lg:p-14 text-white max-w-4xl space-y-6">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 text-[#F5D77F] text-xs font-extrabold uppercase tracking-wider backdrop-blur-sm">
             <Sparkles className="w-4 h-4 text-[#D4AF37]" />
-            Official P2IP Refer & Earn Program
+            Official P2IP Partner Program
           </div>
 
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
             Partner With Us. <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F5D77F] to-[#FFE8A3]">
-              Refer & Earn Across High-Impact Verticals.
+              Collaborate & Grow Across High-Impact Verticals.
             </span>
           </h1>
 
@@ -270,7 +270,7 @@ export const PartnerWithUsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. HOW REFER & EARN WORKS (3-STEP ENGINE) */}
+      {/* 2. HOW PARTNERSHIP WORKS (3-STEP ENGINE) */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200 shadow-xs space-y-6">
         <div className="text-center max-w-2xl mx-auto space-y-2">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[#0F5132] text-xs font-extrabold uppercase tracking-wider">
@@ -278,7 +278,7 @@ export const PartnerWithUsView: React.FC = () => {
             Simple Turnkey Architecture
           </div>
           <h2 className="text-2xl sm:text-3xl font-black text-gray-900">
-            How Refer & Earn Works for Your Practice
+            How Partnership Works for Your Practice
           </h2>
           <p className="text-xs sm:text-sm text-gray-500">
             You introduce trust; our certified faculties deliver life-changing transformation.

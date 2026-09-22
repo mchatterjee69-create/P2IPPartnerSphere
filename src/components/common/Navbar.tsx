@@ -11,7 +11,6 @@ import {
   UserCheck,
   ExternalLink,
   RotateCcw,
-  Sparkles,
   ChevronDown,
   LogOut,
   Lock,
@@ -114,32 +113,10 @@ export const Navbar: React.FC = () => {
               <ExternalLink className="w-3.5 h-3.5" />
               Referral Landing
             </button>
-
-            <button
-              id="nav-partner-with-us-btn"
-              onClick={() => {
-                setActiveTab("partner-with-us");
-              }}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-[#0F5132] hover:bg-emerald-50 transition cursor-pointer"
-              title="Refer & Earn program details for all verticals"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Partner With Us</span>
-            </button>
           </div>
 
           {/* Right Action Icons & Profile */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <a
-              href="https://p2-ip-partner-sphere.vercel.app/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#D4AF37] hover:bg-[#c29e2f] text-[#0F5132] font-black text-xs transition shadow-2xs"
-              title="External partner registration"
-            >
-              <span>Register Now</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
             {/* Authenticated Genuine Partner Identity Badge */}
             {currentRole === "partner" && currentPartner && currentPartner.code !== "PENDING_REGISTRATION" && (
               <div className="hidden lg:flex items-center gap-2 bg-emerald-50/80 border border-emerald-200 rounded-xl px-3 py-1.5 text-xs">

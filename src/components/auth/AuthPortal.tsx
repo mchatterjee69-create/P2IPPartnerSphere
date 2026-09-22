@@ -270,32 +270,6 @@ export const AuthPortal: React.FC = () => {
               </p>
             </div>
           </div>
-
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={() =>
-                setActiveTab(activeTab === "PARTNER_WITH_US" ? "SIGN_IN" : "PARTNER_WITH_US")
-              }
-              className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition flex items-center gap-1.5 cursor-pointer ${
-                activeTab === "PARTNER_WITH_US"
-                  ? "bg-[#D4AF37] text-[#0F5132] border-[#D4AF37] font-black"
-                  : "bg-white/10 hover:bg-white/20 text-[#F5D77F] border-[#D4AF37]/40"
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Partner With Us (Refer & Earn)</span>
-            </button>
-
-            <a
-              href="https://p2-ip-partner-sphere.vercel.app/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#D4AF37] hover:bg-[#c29e2f] text-[#0F5132] font-black text-xs transition shadow-xs"
-            >
-              <span>Register Now</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </a>
-          </div>
         </div>
       </header>
 
@@ -310,16 +284,6 @@ export const AuthPortal: React.FC = () => {
               <LogIn className="w-4 h-4 text-[#F5D77F]" />
               <span>← Back to Partner Sign In Gateway</span>
             </button>
-
-            <a
-              href="https://p2-ip-partner-sphere.vercel.app/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-5 py-2 rounded-xl bg-[#D4AF37] hover:bg-[#c29e2f] text-[#0F5132] font-black text-xs flex items-center gap-2 transition shadow-md"
-            >
-              <span>Register Now & Be Our Partner</span>
-              <ArrowRight className="w-4 h-4" />
-            </a>
           </div>
 
           <PartnerWithUsView />
@@ -345,18 +309,7 @@ export const AuthPortal: React.FC = () => {
               </p>
 
               {/* Navigation Tabs */}
-              <div className="grid grid-cols-2 sm:flex sm:flex-wrap bg-black/20 p-1.5 rounded-2xl mt-6 border border-white/10 text-xs font-bold gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab("PARTNER_WITH_US");
-                  }}
-                  className="py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer text-[#F5D77F] hover:bg-white/10 text-xs font-bold border border-[#D4AF37]/30 bg-[#D4AF37]/10"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-[#F5D77F] shrink-0" />
-                  <span>Refer & Earn</span>
-                </button>
-
+              <div className="grid grid-cols-3 bg-black/20 p-1.5 rounded-2xl mt-6 border border-white/10 text-xs font-bold gap-1.5">
                 <button
                   type="button"
                   onClick={() => {

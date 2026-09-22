@@ -9,7 +9,6 @@ import {
   CheckSquare,
   FileText,
   LogOut,
-  Sparkles,
   Package,
   Target,
   Network,
@@ -62,14 +61,6 @@ export const MobileMoreHub: React.FC = () => {
       desc: "Conversion funnels, attribution channels, and trends",
       icon: BarChart3,
       color: "text-indigo-600 bg-indigo-50",
-    },
-    {
-      id: "partner-with-us",
-      label: "Partner With Us (Refer & Earn)",
-      desc: "Vertical-wise earnings guide for instructors, clinics & studios",
-      icon: Sparkles,
-      color: "text-[#D4AF37] bg-amber-50/80",
-      highlight: true,
     },
     {
       id: "partner-ai",
