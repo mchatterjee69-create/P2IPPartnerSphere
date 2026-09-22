@@ -42,7 +42,12 @@ export const PublicReferralPage: React.FC = () => {
       consent: true,
     });
 
-    if (result.isDuplicate || result.lead.attributionStatus === "DUPLICATE_FLAGGED") {
+    if (!result.success || !result.lead) {
+      alert(result.error || result.message || "Duplicate registration prohibited: A participant with this mobile number or email is already registered.");
+      return;
+    }
+
+    if (result.isDuplicate) {
       setDuplicateNotice(true);
     }
 
@@ -211,7 +216,7 @@ export const PublicReferralPage: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Priya Sharma"
+                    placeholder="Enter your full name"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="w-full p-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#0F5132] text-xs"

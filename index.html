@@ -16,20 +16,6 @@
   </head>
   <body class="bg-[#FBFBFA] text-[#1F2923] antialiased selection:bg-[#0F5132]/20 selection:text-[#0F5132]">
     <div id="root"></div>
-    <script>
-      (function() {
-        try {
-          var toRemove = [];
-          for (var i = 0; i < localStorage.length; i++) {
-            var k = localStorage.key(i);
-            if (k && (k.indexOf('p2ip_partnersphere_state_v1') !== -1 || k.indexOf('commissions') !== -1 || k.indexOf('leads') !== -1 || k.indexOf('partners') !== -1 || k.indexOf('payouts') !== -1)) {
-              toRemove.push(k);
-            }
-          }
-          toRemove.forEach(function(key) { localStorage.removeItem(key); });
-        } catch (e) {}
-      })();
-    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

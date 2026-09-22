@@ -27,6 +27,7 @@ import {
 import { PartnerType } from "../../types";
 import { PartnerWithUsView } from "../partner/PartnerWithUsView";
 import { PARTNER_CLIENT_REFERRAL_TERMS } from "../../data/partnerTermsData";
+import { PartnerSphereAgreementModal } from "./PartnerSphereAgreementModal";
 
 export const AuthPortal: React.FC = () => {
   const {
@@ -148,37 +149,72 @@ export const AuthPortal: React.FC = () => {
       return;
     }
 
-    // Input validations passed! Automatically pop up the Declaration & T&C form
-    setIsDeclarationModalOpen(true);
-    setDeclarationAccepted(false);
-  };
+    // STRICT DUPLICATE PARTNER CHECK: analyze all info input
+    const cleanMobileDigits = regMobile.replace(/[^0-9]/g, "");
+    const cleanEmailTrimmed = regEmail.trim().toLowerCase();
+    const cleanCodeTrimmed = regReferralCode.trim().toUpperCase();
+    const cleanPanUpper = cleanPan;
+    const cleanAadhaarDigits = cleanAadhaar;
 
-  // When partner ticks "I Accept..." and confirms, create account & open portal immediately
-  const handleConfirmDeclarationAndOpenPortal = () => {
-    if (!declarationAccepted) return;
-
-    const res = selfRegisterPartner({
-      name: regName,
-      organisation: regOrg,
-      partnerType: regType,
-      mobile: regMobile,
-      email: regEmail,
-      location: regLocation,
-      code: regReferralCode,
-      password: regPassword,
-      twoStepAuthPin: regTwoStepPin,
-      panNumber: regPan.trim().toUpperCase(),
-      aadhaarNumber: regAadhaar.replace(/\s+/g, ""),
+    const existingPartner = partners.find((p) => {
+      const pMobile = p.mobile.replace(/[^0-9]/g, "");
+      const matchMobile = cleanMobileDigits.length >= 10 && (pMobile.endsWith(cleanMobileDigits.slice(-10)) || cleanMobileDigits.endsWith(pMobile.slice(-10)));
+      const matchEmail = cleanEmailTrimmed.length > 3 && p.email.trim().toLowerCase() === cleanEmailTrimmed;
+      const matchCode = p.code.trim().toUpperCase() === cleanCodeTrimmed;
+      const matchPan = cleanPanUpper && p.panNumber && p.panNumber.trim().toUpperCase() === cleanPanUpper;
+      const matchAadhaar = cleanAadhaarDigits && p.aadhaarNumber && p.aadhaarNumber.replace(/[^0-9]/g, "") === cleanAadhaarDigits;
+      return matchMobile || matchEmail || matchCode || matchPan || matchAadhaar;
     });
 
-    if (!res.success) {
-      setIsDeclarationModalOpen(false);
-      setRegError(res.error || "Registration failed. Please check your details.");
+    if (existingPartner) {
+      let matchedReason = `Partner Code (${existingPartner.code})`;
+      if (cleanMobileDigits.length >= 10 && existingPartner.mobile.replace(/[^0-9]/g, "").endsWith(cleanMobileDigits.slice(-10))) {
+        matchedReason = `mobile number (+91 ${cleanMobileDigits.slice(-10)})`;
+      } else if (cleanEmailTrimmed.length > 3 && existingPartner.email.trim().toLowerCase() === cleanEmailTrimmed) {
+        matchedReason = `email address (${regEmail})`;
+      } else if (cleanPanUpper && existingPartner.panNumber?.toUpperCase() === cleanPanUpper) {
+        matchedReason = `PAN Card Number (${cleanPanUpper})`;
+      }
+
+      setRegError(
+        `Duplicate registration prohibited: A partner account is already registered with this ${matchedReason} under Partner Code: ${existingPartner.code} (${existingPartner.name}). Once your unique partner code is generated, you can log in directly and cannot register once again.`
+      );
       return;
     }
 
-    // Success: Modal closes and portal opens automatically
-    setIsDeclarationModalOpen(false);
+    // Input validations passed! Automatically pop up the P2IP PartnerSphere Agreement & Disclosure
+    setIsDeclarationModalOpen(true);
+  };
+
+  // When partner confirms radioactive agreement & joins, create account & open portal immediately
+  const handleConfirmDeclarationAndOpenPortal = async () => {
+    try {
+      const res = await selfRegisterPartner({
+        name: regName,
+        organisation: regOrg,
+        partnerType: regType,
+        mobile: regMobile,
+        email: regEmail,
+        location: regLocation,
+        code: regReferralCode,
+        password: regPassword,
+        twoStepAuthPin: regTwoStepPin,
+        panNumber: regPan.trim().toUpperCase(),
+        aadhaarNumber: regAadhaar.replace(/\s+/g, ""),
+      });
+
+      if (!res.success) {
+        setIsDeclarationModalOpen(false);
+        setRegError(res.error || "Registration failed. Please check your details.");
+        return;
+      }
+
+      // Success: Modal closes and portal opens automatically
+      setIsDeclarationModalOpen(false);
+    } catch (err: any) {
+      setIsDeclarationModalOpen(false);
+      setRegError(err?.message || "Registration error. Please try again.");
+    }
   };
 
   // Admin Submit Handler
@@ -454,6 +490,49 @@ export const AuthPortal: React.FC = () => {
                       <span>Verify Identity & Proceed to 2-Step Auth</span>
                       <ArrowRight className="w-4 h-4 text-[#F5D77F]" />
                     </button>
+
+                    {/* Real Registered Partners in SQLite Database */}
+                    {partners && partners.length > 0 && (
+                      <div className="mt-5 p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                            Registered Partners Today ({partners.length})
+                          </span>
+                          <span className="text-[10px] bg-amber-200/80 text-amber-900 font-bold px-2 py-0.5 rounded-full">
+                            Click to fill login
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {partners.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => {
+                                setReferralIdInput(p.code);
+                                setPasswordInput(p.password || `partner@${p.name.split(" ")[0].toLowerCase()}`);
+                              }}
+                              className="w-full text-left p-2.5 rounded-xl bg-white hover:bg-amber-100/70 border border-amber-200 transition flex items-center justify-between group cursor-pointer shadow-xs"
+                            >
+                              <div className="min-w-0 pr-2">
+                                <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                                  <span>{p.name}</span>
+                                  <span className="font-mono text-[11px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-black tracking-wide">
+                                    {p.code}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-gray-500 truncate">
+                                  {p.organisation} • {p.mobile}
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-bold text-[#0F5132] group-hover:underline shrink-0">
+                                Use Code →
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Genuine registration prompt */}
                     <div className="pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
@@ -936,190 +1015,22 @@ export const AuthPortal: React.FC = () => {
         </p>
       </footer>
 
-      {/* AUTOMATIC DECLARATION & TERMS & CONDITIONS POP-UP MODAL */}
-      {isDeclarationModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
-          <div className="relative w-full max-w-3xl lg:max-w-4xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-[#0F5132]/30 overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh]">
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-[#0F5132] to-[#146c43] p-4 sm:p-5 text-white flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5 sm:gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/10 border border-[#D4AF37]/50 flex items-center justify-center text-[#F5D77F] shrink-0">
-                  <ShieldCheck className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-extrabold tracking-wide">
-                    Partner Declaration & Code of Conduct
-                  </h3>
-                  <p className="text-[11px] sm:text-xs text-emerald-200">
-                    Official Path to Inner Peace Agreement (v1.3) • 10 Mandatory Client Referral Clauses
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsDeclarationModalOpen(false)}
-                className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition cursor-pointer"
-                title="Close modal and review registration form"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Scrollable Body */}
-            <div className="p-3.5 sm:p-6 overflow-y-auto flex-1 space-y-4 text-xs text-gray-700 leading-relaxed">
-              {/* Verification Summary Card */}
-              <div className="bg-gradient-to-br from-emerald-50/90 via-white to-amber-50/40 border border-emerald-200/80 rounded-2xl p-3.5 sm:p-4 shadow-xs">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5 pb-2 border-b border-emerald-200/50">
-                  <span className="font-extrabold text-xs text-[#0F5132] uppercase tracking-wider flex items-center gap-1.5">
-                    <UserCheck className="w-4 h-4 text-[#0F5132]" />
-                    Accredited Partner Identity & Tax Credentials
-                  </span>
-                  <span className="text-[10px] font-bold bg-[#0F5132] text-[#F5D77F] px-2.5 py-0.5 rounded-full font-mono border border-[#D4AF37]/40">
-                    CODE: {regReferralCode.toUpperCase() || "PENDING"}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-2.5 text-xs">
-                  <div className="p-2 bg-white/80 rounded-xl border border-gray-100">
-                    <span className="text-gray-500 block text-[10px] font-semibold">Legal Partner Name:</span>
-                    <strong className="text-gray-900 text-xs truncate block">{regName}</strong>
-                  </div>
-                  <div className="p-2 bg-white/80 rounded-xl border border-gray-100">
-                    <span className="text-gray-500 block text-[10px] font-semibold">Vertical & Organisation:</span>
-                    <strong className="text-gray-900 text-xs truncate block">{regType} ({regOrg || "Independent"})</strong>
-                  </div>
-                  <div className="p-2 bg-white/80 rounded-xl border border-gray-100">
-                    <span className="text-gray-500 block text-[10px] font-semibold">Mobile & Email:</span>
-                    <strong className="text-gray-900 text-xs truncate block">{regMobile} • {regEmail}</strong>
-                  </div>
-                  <div className="p-2 bg-white/80 rounded-xl border border-gray-100">
-                    <span className="text-gray-500 block text-[10px] font-semibold">Operating Location:</span>
-                    <strong className="text-gray-900 text-xs truncate block">{regLocation || "India"}</strong>
-                  </div>
-                  <div className="p-2 bg-white rounded-xl border border-emerald-300">
-                    <span className="text-gray-500 block text-[10px] font-bold uppercase">PAN Card Number:</span>
-                    <div className="flex items-center justify-between gap-1 mt-0.5">
-                      <span className="font-mono font-extrabold text-[#0F5132] text-xs tracking-wider">
-                        {regPan.toUpperCase()}
-                      </span>
-                      <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">
-                        ✓ Sec 194H TDS Ready
-                      </span>
-                    </div>
-                  </div>
-                  <div className="p-2 bg-white rounded-xl border border-emerald-300">
-                    <span className="text-gray-500 block text-[10px] font-bold uppercase">Aadhaar Number:</span>
-                    <div className="flex items-center justify-between gap-1 mt-0.5">
-                      <span className="font-mono font-extrabold text-[#0F5132] text-xs tracking-wider">
-                        {regAadhaar}
-                      </span>
-                      <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">
-                        ✓ KYC Verified
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Notice Bar: Clients Only */}
-              <div className="p-3 bg-amber-50 border border-amber-200/90 rounded-2xl text-amber-950 flex items-start gap-2.5">
-                <AlertCircle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
-                <div className="text-[11px] sm:text-xs">
-                  <strong className="font-bold text-amber-900">Mandatory Rule for All Referrals:</strong>{" "}
-                  All individuals referred to Path to Inner Peace are designated and serviced strictly as <strong>Clients</strong>. Accredited partners must adhere to the 10 clauses below before being granted access to the Partner Portal.
-                </div>
-              </div>
-
-              {/* 10 Detailed Clauses to be Adhered by Partner */}
-              <div className="space-y-3 bg-[#FAFBFA] p-3.5 sm:p-4 rounded-2xl border border-gray-200">
-                <div className="flex items-center justify-between pb-2 border-b border-gray-200">
-                  <h4 className="font-extrabold text-xs uppercase tracking-wide flex items-center gap-1.5 text-[#0F5132]">
-                    <FileText className="w-4 h-4" />
-                    10 Clauses to be Adhered by Partner for Referring Clients
-                  </h4>
-                  <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full">
-                    10 Mandatory Rules
-                  </span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {PARTNER_CLIENT_REFERRAL_TERMS.map((clause) => (
-                    <div
-                      key={clause.id}
-                      className="p-3 bg-white rounded-xl border border-gray-200/90 hover:border-[#0F5132]/40 transition shadow-2xs"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1 pb-1 border-b border-gray-100">
-                        <span className="font-bold text-xs text-[#0F5132] flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-[#0F5132] text-white flex items-center justify-center text-[10px] font-black shrink-0">
-                            {clause.clauseNumber}
-                          </span>
-                          <span>{clause.title}</span>
-                        </span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          {clause.badge}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-gray-700 font-medium mb-1.5">
-                        {clause.summary}
-                      </p>
-                      <p className="text-[10.5px] text-gray-500 leading-relaxed font-sans bg-gray-50/70 p-2 rounded-lg border border-gray-100">
-                        {clause.fullText}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Interactive Acceptance Checkbox */}
-              <div className="p-3.5 sm:p-4 bg-emerald-50 border-2 border-[#0F5132]/50 rounded-2xl shadow-xs">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    id="declaration-t-c-accept-checkbox"
-                    checked={declarationAccepted}
-                    onChange={(e) => setDeclarationAccepted(e.target.checked)}
-                    className="w-5 h-5 mt-0.5 rounded text-[#0F5132] focus:ring-[#0F5132] cursor-pointer shrink-0"
-                  />
-                  <div>
-                    <span className="text-xs sm:text-sm font-black text-emerald-950 block leading-snug">
-                      I solemnly declare that the details provided (including PAN and Aadhaar) are authentic. I accept and agree to strictly adhere to all 10 Clauses of the Partner Client Referral Code of Conduct, including referring individuals strictly as Clients, non-clinical practice boundaries, client consent, anti-spam, and statutory TDS compliance.
-                    </span>
-                    <span className="text-[11px] text-emerald-800/90 mt-1.5 block font-medium">
-                      ✓ By ticking this box and clicking the button below, your partner account is accredited, authenticated, and your personal partner portal will open immediately.
-                    </span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-3 sm:p-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-2.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsDeclarationModalOpen(false)}
-                className="w-full sm:w-auto px-4 py-2.5 text-xs font-bold text-gray-600 hover:text-gray-900 bg-white border border-gray-300 rounded-xl transition cursor-pointer"
-              >
-                ← Review & Edit Details
-              </button>
-
-              <button
-                id="confirm-declaration-and-open-portal-btn"
-                type="button"
-                disabled={!declarationAccepted}
-                onClick={handleConfirmDeclarationAndOpenPortal}
-                className={`w-full sm:w-auto px-6 py-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-md cursor-pointer ${
-                  declarationAccepted
-                    ? "bg-[#0F5132] hover:bg-[#146c43] text-white shadow-emerald-900/20"
-                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                }`}
-              >
-                <Sparkles className="w-4 h-4 text-[#F5D77F] shrink-0" />
-                <span>I Accept All 10 Clauses & Open Portal Now →</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* P2IP PARTNERSPHERE TERMS & CONDITIONS DISCLOSURE MODAL (24 Clauses, Campaign Rules, Disclosures & 10 Radioactive Checkboxes) */}
+      <PartnerSphereAgreementModal
+        isOpen={isDeclarationModalOpen}
+        onClose={() => setIsDeclarationModalOpen(false)}
+        onConfirmAndOpenPortal={handleConfirmDeclarationAndOpenPortal}
+        partnerDetails={{
+          name: regName,
+          organisation: regOrg || "Independent Practice",
+          partnerType: regType,
+          code: regReferralCode,
+          mobile: regMobile,
+          email: regEmail,
+          panNumber: regPan.toUpperCase(),
+          aadhaarNumber: regAadhaar,
+        }}
+      />
     </div>
   );
 };

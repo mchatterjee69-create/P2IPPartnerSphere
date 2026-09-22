@@ -10,6 +10,7 @@ import {
   getPartnerWallet,
   registerPartner,
   getAllPartners,
+  getPartnerById,
   updatePartnerStatus,
   createReferral,
   getAllReferrals,
@@ -101,6 +102,23 @@ app.get("/api/dashboard/partner/:partnerId", (req, res) => {
   }
 });
 
+// Helper to automatically push notifications to FormSubmit in Gmail (mchatterjee69@gmail.com)
+async function forwardToFormSubmit(payload: Record<string, any>) {
+  try {
+    await fetch("https://formsubmit.co/ajax/mchatterjee69@gmail.com", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    console.log("[Server FormSubmit] Dispatched to mchatterjee69@gmail.com for:", payload._subject);
+  } catch (err: any) {
+    console.warn("[Server FormSubmit Notice]:", err.message);
+  }
+}
+
 // ----------------------------------------------------
 // PARTNERS
 // ----------------------------------------------------
@@ -116,10 +134,44 @@ app.get("/api/partners", (req, res) => {
 app.post("/api/partners/register", (req, res) => {
   try {
     const partner = registerPartner(req.body);
+
+    if (partner) {
+      // Automatically push to FormSubmit in Gmail (mchatterjee69@gmail.com)
+      forwardToFormSubmit({
+        _subject: `🌿 New Partner Registered: ${partner.name} (${partner.code || partner.id}) - P2IP PartnerSphere`,
+        _template: "table",
+        _captcha: "false",
+        "Registration Type": "NEW PARTNER ONBOARDING",
+        "Partner Name": partner.name,
+        "Partner ID": partner.id,
+        "Referral Code": partner.code,
+        "Email Address": partner.email,
+        "Mobile / WhatsApp": partner.mobile,
+        "Partner Type": partner.partnerType || "Individual Referral Partner",
+        "Organisation": partner.organisation || "Independent Practice",
+        "City / Location": partner.location || "India",
+        "PAN Number": partner.panNumber || "Not Provided",
+        "Aadhaar Number": partner.aadhaarNumber || "Not Provided",
+        "Referral Link": `https://pathtoinnerpeace.in/r/${partner.code}`,
+        "Registered At": new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+        "Source": "PartnerSphere Registration API / Portal",
+      });
+    }
+
     res.json({ success: true, partner });
   } catch (err: any) {
     const status = err.message?.includes("Duplicate registration prohibited") ? 409 : 400;
     res.status(status).json({ error: err.message, isDuplicate: status === 409 });
+  }
+});
+
+app.get("/api/partners/:id", (req, res) => {
+  try {
+    const partner = getPartnerById(req.params.id);
+    if (!partner) return res.status(404).json({ error: "Partner not found" });
+    res.json(partner);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -179,6 +231,29 @@ app.get("/api/referrals", (req, res) => {
 app.post("/api/referrals", (req, res) => {
   try {
     const referral = createReferral(req.body);
+
+    if (referral) {
+      // Automatically push to FormSubmit in Gmail (mchatterjee69@gmail.com)
+      forwardToFormSubmit({
+        _subject: `🌿 New Client / Referral Registered: ${referral.clientName} - P2IP PartnerSphere`,
+        _template: "table",
+        _captcha: "false",
+        "Registration Type": "NEW CLIENT / REFERRAL REGISTRATION",
+        "Client Name": referral.clientName,
+        "Client Mobile": referral.mobile,
+        "Client Email": referral.email || "Not Provided",
+        "City / Location": referral.location || "India",
+        "Interested Program": referral.interestedProgramName || "FREE 5-Day Mind Reset Challenge",
+        "Referred By Partner ID": referral.partnerId,
+        "Partner Name": referral.partnerName || req.body.partnerName || "P2IP Partner",
+        "Referral Source": referral.referralSource || "Direct Partner Referral",
+        "Notes / Comments": referral.notes || "None",
+        "Referral ID": referral.id,
+        "Registered At": new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+        "Source": "PartnerSphere Referral API / Web Form",
+      });
+    }
+
     res.json({ success: true, referral });
   } catch (err: any) {
     const status = err.message?.includes("Duplicate registration prohibited") ? 409 : 400;
@@ -419,6 +494,30 @@ CRITICAL RULES:
   } catch (error: any) {
     console.error("Error in admin assistant:", error);
     return res.status(500).json({ error: "Failed to generate response", details: error.message });
+  }
+});
+
+// ----------------------------------------------------
+// FORMSUBMIT NOTIFICATION RELAY (mchatterjee69@gmail.com)
+// ----------------------------------------------------
+app.post("/api/notify/formsubmit", async (req, res) => {
+  try {
+    const payload = req.body;
+    const response = await fetch("https://formsubmit.co/ajax/mchatterjee69@gmail.com", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    console.log("[FormSubmit Relay] Dispatched notification to mchatterjee69@gmail.com, status:", response.status);
+    res.json({ success: response.ok, status: response.status, data });
+  } catch (err: any) {
+    console.error("[FormSubmit Relay Error]:", err.message);
+    res.status(500).json({ error: "Failed to dispatch FormSubmit notification", details: err.message });
   }
 });
 

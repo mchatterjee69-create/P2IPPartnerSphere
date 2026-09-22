@@ -27,24 +27,39 @@ export type PartnerType =
   | "Corporate Channel Partner";
 
 export interface Partner {
-  id: string; // e.g. "P2IP-PT-00123"
-  code: string; // e.g. "P2IP123"
+  id: string; // e.g. "P2IP-PT-00123" or "P2IP-MALOY"
+  partnerId?: string; // Standard alias for id
+  authUid?: string; // Firebase Authentication UID
+  code: string; // e.g. "P2IP123" or "P2IP-MALOY"
+  referralCode?: string; // Standard alias for code
   name: string;
   organisation: string;
+  organizationName?: string; // Alias for organisation
   partnerType: PartnerType;
   mobile: string;
+  phone?: string; // Alias for mobile
   email: string;
   location: string;
+  city?: string;
+  state?: string;
   avatarUrl?: string;
   joiningDate: string;
+  joinedAt?: string; // Alias for joiningDate
+  updatedAt?: string;
   level: PartnerLevelKey;
   status: PartnerStatus;
   referralUrl: string; // https://pathtoinnerpeace.in/r/P2IP123
+  referralLink?: string; // Alias for referralUrl
+  payoutProfileStatus?: string;
   totalReferrals: number;
   currentMonthlyReferrals: number;
   totalCustomers: number;
+  totalPaidCustomers?: number;
   lifetimeRevenue: number;
   lifetimeCommission: number;
+  totalEarned?: number; // Ledger-calculated total earned
+  totalPaidOut?: number; // Ledger-calculated total paid out
+  availableBalance?: number; // Ledger-calculated available balance
   monthlyTarget: number;
   customCommissionRate?: number; // Override if specified by admin (e.g. 50%)
   bankDetails?: {
@@ -66,6 +81,18 @@ export interface Partner {
   twoStepAuthEnabled?: boolean;
   panNumber?: string;
   aadhaarNumber?: string;
+}
+
+export interface Transaction {
+  id: string;
+  partnerId: string;
+  type: "COMMISSION" | "REWARD" | "PAYOUT" | "ADJUSTMENT";
+  amount: number;
+  referenceId?: string;
+  referenceType?: string;
+  description: string;
+  balanceAfter?: number;
+  createdAt: string;
 }
 
 export interface AuthSession {

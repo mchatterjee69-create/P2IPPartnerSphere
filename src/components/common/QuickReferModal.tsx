@@ -74,11 +74,16 @@ export const QuickReferModal: React.FC = () => {
       partnerId: currentRole === "admin" ? selectedPartnerId : currentPartner.id,
     });
 
+    if (!res.success || !res.lead) {
+      alert(res.error || res.message || "Duplicate client registration is strictly prohibited. This client is already registered in P2IP.");
+      return;
+    }
+
     const chosenProg = products.find((p) => p.id === interestedProgramId);
 
     setSubmittedLead({
       leadId: res.lead.id,
-      isDuplicate: res.isDuplicate,
+      isDuplicate: false,
       clientName: res.lead.clientName,
       programName: chosenProg?.name || "FREE 5-Day Mind Reset Challenge",
     });

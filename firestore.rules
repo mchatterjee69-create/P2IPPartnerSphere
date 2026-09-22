@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Partner collection
+    match /partners/{partnerId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Leads / Referrals collection
+    match /leads/{leadId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Transactions ledger
+    match /transactions/{transactionId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Commissions collection
+    match /commissions/{commissionId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Payouts collection
+    match /payouts/{payoutId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Products collection
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Audit logs
+    match /audit_logs/{logId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Business rules
+    match /business_rules/{ruleId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // System diagnostics collection
+    match /system_diagnostics/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

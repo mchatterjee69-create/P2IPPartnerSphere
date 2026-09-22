@@ -16,6 +16,7 @@ import {
   Sparkles,
   ChevronDown,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { Lead, ReferralStatus, AttributionDecision } from "../../types";
 
@@ -27,7 +28,16 @@ export const AdminLeadCrm: React.FC = () => {
     updateLeadStatus,
     resolveDuplicateAttribution,
     logCustomerPayment,
+    refreshData,
   } = useApp();
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshData();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   const [searchQuery, setSearchQuery] = useState("");
   const [partnerFilter, setPartnerFilter] = useState("ALL");
@@ -95,15 +105,27 @@ export const AdminLeadCrm: React.FC = () => {
           </p>
         </div>
 
-        {duplicateFlaggedCount > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setAttributionFilter("DUPLICATE_FLAGGED")}
-            className="px-3.5 py-1.5 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs flex items-center gap-1.5 transition hover:bg-amber-200 cursor-pointer"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+            title="Sync all client leads directly from SQLite database"
           >
-            <AlertTriangle className="w-4 h-4 text-amber-700" />
-            <span>{duplicateFlaggedCount} Attribution Review Needed</span>
+            <RefreshCw className={`w-3.5 h-3.5 text-[#0F5132] ${isRefreshing ? "animate-spin" : ""}`} />
+            <span>{isRefreshing ? "Syncing..." : "Sync DB"}</span>
           </button>
-        )}
+
+          {duplicateFlaggedCount > 0 && (
+            <button
+              onClick={() => setAttributionFilter("DUPLICATE_FLAGGED")}
+              className="px-3.5 py-1.5 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs flex items-center gap-1.5 transition hover:bg-amber-200 cursor-pointer"
+            >
+              <AlertTriangle className="w-4 h-4 text-amber-700" />
+              <span>{duplicateFlaggedCount} Attribution Review Needed</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filter Bar */}

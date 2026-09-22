@@ -16,6 +16,7 @@ import {
   Phone,
   Mail,
   MoreHorizontal,
+  RefreshCw,
 } from "lucide-react";
 import { Partner, PartnerType, PartnerLevelKey } from "../../types";
 
@@ -27,7 +28,16 @@ export const AdminPartnerManagement: React.FC = () => {
     updatePartnerProfile,
     togglePartnerStatus,
     setDiscretionaryBonus,
+    refreshData,
   } = useApp();
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshData();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
@@ -68,10 +78,10 @@ export const AdminPartnerManagement: React.FC = () => {
 
   const handleCreatePartner = (e: React.FormEvent) => {
     e.preventDefault();
-    const codeNum = Math.floor(100 + Math.random() * 900);
-    const code = `P2IP${codeNum}`;
+    const seq = partners.length + 1;
+    const code = `P2IP${String(seq).padStart(3, "0")}`;
     createPartner({
-      id: `P2IP-PT-00${codeNum}`,
+      id: `P2IP-PT-${String(seq).padStart(4, "0")}`,
       code,
       name: newPartnerName,
       organisation: newPartnerOrg || newPartnerName,
@@ -134,13 +144,25 @@ export const AdminPartnerManagement: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddPartnerOpen(true)}
-          className="px-4 py-2.5 bg-[#0F5132] hover:bg-[#146c43] text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          Onboard New Partner
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border border-gray-200"
+            title="Sync all partner data directly from SQLite database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-[#0F5132] ${isRefreshing ? "animate-spin" : ""}`} />
+            <span>{isRefreshing ? "Syncing..." : "Sync DB"}</span>
+          </button>
+
+          <button
+            onClick={() => setIsAddPartnerOpen(true)}
+            className="px-4 py-2.5 bg-[#0F5132] hover:bg-[#146c43] text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs"
+          >
+            <Plus className="w-4 h-4" />
+            Onboard New Partner
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}

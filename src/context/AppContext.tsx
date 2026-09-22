@@ -24,7 +24,25 @@ import {
   AttributionDecision,
   PartnerLevelKey,
   AuthSession,
+  Transaction,
 } from "../types";
+import {
+  subscribeToPartners,
+  subscribeToLeads,
+  subscribeToTransactions,
+  subscribeToCommissions,
+  subscribeToPayouts,
+  savePartnerToFirestore,
+  saveLeadToFirestore,
+  recordLedgerTransactionInFirestore,
+  recordCommissionInFirestore,
+  recordPayoutInFirestore,
+  authenticateOrCreatePartnerUser,
+} from "../services/firestoreService";
+import {
+  pushPartnerRegistrationToFormSubmit,
+  pushClientRegistrationToFormSubmit,
+} from "../services/formSubmitService";
 import {
   INITIAL_PARTNERS,
   EMPTY_GENUINE_PARTNER,
@@ -80,13 +98,15 @@ interface AppContextType {
       mobile: string;
       email: string;
     }
-  ) => { success: boolean; partner?: Partner; error?: string; isDuplicate?: boolean; existingPartner?: Partner };
+  ) => Promise<{ success: boolean; partner?: Partner; error?: string; isDuplicate?: boolean; existingPartner?: Partner }>;
   adminLogin: (password: string) => { success: boolean; error?: string };
   logout: () => void;
+  refreshData: () => Promise<void>;
   partners: Partner[];
   leads: Lead[];
   products: Product[];
   commissions: Commission[];
+  transactions: Transaction[];
   partnerLevels: PartnerLevelConfig[];
   campaigns: Campaign[];
   clientNodes: ClientReferralNode[];
@@ -181,28 +201,6 @@ if (typeof window !== "undefined" && window.localStorage) {
 
 const STORAGE_KEY = "p2ip_crm_prod_v3_clean";
 
-const FAKE_PATTERNS = /Anita|Kunal|Khurana|Tanya|Shashank|Singhal|Rohan|Priya|Vikram|Sneha|Rajesh/i;
-
-const isGenuineLead = (l: any): boolean => {
-  if (!l || !l.id) return false;
-  if (typeof l.id === "string" && l.id.startsWith("P2IP-REF-0001")) return false;
-  if (FAKE_PATTERNS.test(l.clientName || "") || FAKE_PATTERNS.test(l.partnerName || "")) return false;
-  return true;
-};
-
-const isGenuineCommission = (c: any): boolean => {
-  if (!c || !c.id) return false;
-  if (
-    typeof c.id === "string" &&
-    (c.id.startsWith("P2IP-COM-0004") ||
-      c.id.startsWith("P2IP-COM-0001") ||
-      c.id.startsWith("COMM-TEST"))
-  )
-    return false;
-  if (FAKE_PATTERNS.test(c.clientName || "") || FAKE_PATTERNS.test(c.partnerName || "")) return false;
-  return true;
-};
-
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load saved state or default to seed data
   const [currentRole, setCurrentRole] = useState<UserRole | "public_referral">(() => {
@@ -219,35 +217,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [partners, setPartners] = useState<Partner[]>(() => {
-    const FAKE_PARTNER_CODES = new Set([
-      "FRESHZERO",
-      "P2IP123",
-      "FITPULSE",
-      "YOGASHAKTI",
-      "TALENTCARE",
-      "MINDCARE",
-      "PALMGROVE",
-      "SNEHAWELL",
-      "SEVAFOUND",
-      "VIDYAPITH",
-      "NEELAMAMBASSADOR",
-    ]);
-
     const saved = localStorage.getItem(`${STORAGE_KEY}_partners`);
     if (saved) {
       try {
-        const parsed: Partner[] = JSON.parse(saved);
-        const genuine = parsed.filter(
-          (p) =>
-            !FAKE_PARTNER_CODES.has(p.code) &&
-            !p.id.startsWith("P2IP-PT-001") &&
-            p.id !== "P2IP-PT-00999" &&
-            !FAKE_PATTERNS.test(p.name || "")
-        );
-        return genuine;
-      } catch (e) {
-        return [];
-      }
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
     }
     return [];
   });
@@ -290,7 +265,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return Array.isArray(parsed) ? parsed.filter(isGenuineLead) : [];
+        return Array.isArray(parsed) ? parsed : [];
       } catch (e) {
         return [];
       }
@@ -308,7 +283,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return Array.isArray(parsed) ? parsed.filter(isGenuineCommission) : [];
+        return Array.isArray(parsed) ? parsed : [];
       } catch (e) {
         return [];
       }
@@ -328,13 +303,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return Array.isArray(parsed) ? parsed.filter((p: any) => !FAKE_PATTERNS.test(p.partnerName || "")) : [];
+        return Array.isArray(parsed) ? parsed : [];
       } catch (e) {
         return [];
       }
     }
     return [];
   });
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [businessRules, setBusinessRules] = useState<BusinessRulesSettings>(INITIAL_BUSINESS_RULES);
 
@@ -347,52 +323,117 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
-  // Synchronize state with SQLite backend single source of truth on mount
-  useEffect(() => {
-    let active = true;
-    async function syncBackend() {
-      try {
-        const [pRes, rRes, cRes, payRes] = await Promise.all([
-          fetch("/api/partners"),
-          fetch("/api/referrals"),
-          fetch("/api/commissions"),
-          fetch("/api/payouts"),
-        ]);
-        if (!active) return;
-        if (pRes.ok) {
-          const data = await pRes.json();
-          if (Array.isArray(data)) {
-            const clean = data.filter((p: any) => !FAKE_PATTERNS.test(p.name || "") && !p.id.startsWith("P2IP-PT-001"));
-            setPartners(clean);
-          }
+  // Central refresh function that queries backend and ensures synchronization
+  const refreshData = async () => {
+    try {
+      const [pRes, rRes, cRes, payRes] = await Promise.all([
+        fetch("/api/partners"),
+        fetch("/api/referrals"),
+        fetch("/api/commissions"),
+        fetch("/api/payouts"),
+      ]);
+      if (pRes.ok) {
+        const data = await pRes.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setPartners(data);
+          setCurrentPartnerState((prev) => {
+            const matched = data.find((p: Partner) => p.id === prev.id || p.code === prev.code);
+            return matched || data[0] || prev;
+          });
         }
-        if (rRes.ok) {
-          const data = await rRes.json();
-          if (Array.isArray(data)) {
-            setLeads(data.filter(isGenuineLead));
-          }
-        }
-        if (cRes.ok) {
-          const data = await cRes.json();
-          if (Array.isArray(data)) {
-            setCommissions(data.filter(isGenuineCommission));
-          }
-        }
-        if (payRes.ok) {
-          const data = await payRes.json();
-          if (Array.isArray(data)) {
-            setPayouts(data.filter((p: any) => !FAKE_PATTERNS.test(p.partnerName || "")));
-          }
-        }
-      } catch (err) {
-        console.warn("Backend sync skipped:", err);
       }
+      if (rRes.ok) {
+        const data = await rRes.json();
+        if (Array.isArray(data)) {
+          setLeads(data);
+        }
+      }
+      if (cRes.ok) {
+        const data = await cRes.json();
+        if (Array.isArray(data)) {
+          setCommissions(data);
+        }
+      }
+      if (payRes.ok) {
+        const data = await payRes.json();
+        if (Array.isArray(data)) {
+          setPayouts(data);
+        }
+      }
+    } catch (err) {
+      console.warn("Backend sync notice:", err);
     }
-    syncBackend();
+  };
+
+  // Real-time Cloud Firestore synchronization (Single Source of Truth)
+  useEffect(() => {
+    const unsubPartners = subscribeToPartners((livePartners) => {
+      setPartners(livePartners);
+      setCurrentPartnerState((prev) => {
+        const matched = livePartners.find((p) => p.id === prev.id || p.code === prev.code);
+        return matched || livePartners[0] || prev;
+      });
+    });
+
+    const unsubLeads = subscribeToLeads((liveLeads) => {
+      setLeads(liveLeads);
+    });
+
+    const unsubTransactions = subscribeToTransactions((liveTxns) => {
+      setTransactions(liveTxns);
+    });
+
+    const unsubCommissions = subscribeToCommissions((liveComms) => {
+      setCommissions(liveComms);
+    });
+
+    const unsubPayouts = subscribeToPayouts((livePayouts) => {
+      setPayouts(livePayouts);
+    });
+
+    // Also run initial refreshData to keep local endpoints in sync
+    refreshData();
+
     return () => {
-      active = false;
+      unsubPartners();
+      unsubLeads();
+      unsubTransactions();
+      unsubCommissions();
+      unsubPayouts();
     };
   }, []);
+
+  // Dynamically compute ledger-backed financial balances and stats for each partner
+  const enrichedPartners = partners.map((p) => {
+    const partnerComms = commissions.filter(
+      (c) => c.partnerId === p.id && (c.status === "APPROVED" || c.status === "PAYABLE" || c.status === "PAID")
+    );
+    const partnerPayouts = payouts.filter((pay) => pay.partnerId === p.id && pay.status === "PAID");
+
+    const totalEarned = partnerComms.reduce((sum, c) => sum + (Number(c.commissionAmount) || 0), 0);
+    const totalPaidOut = partnerPayouts.reduce((sum, pay) => sum + (Number(pay.paidAmount) || 0), 0);
+    const availableBalance = Math.max(0, totalEarned - totalPaidOut);
+
+    const partnerLeads = leads.filter((l) => l.partnerId === p.id);
+    const totalReferrals = partnerLeads.length;
+    const totalCustomers = partnerLeads.filter((l) => l.status === "PAID_CUSTOMER" || l.status === "RENEWAL").length;
+
+    return {
+      ...p,
+      totalEarned,
+      totalPaidOut,
+      availableBalance,
+      totalReferrals: totalReferrals > 0 ? totalReferrals : (p.totalReferrals || 0),
+      totalCustomers: totalCustomers > 0 ? totalCustomers : (p.totalCustomers || 0),
+      totalPaidCustomers: totalCustomers > 0 ? totalCustomers : (p.totalPaidCustomers || p.totalCustomers || 0),
+      lifetimeCommission: totalEarned > 0 ? totalEarned : (p.lifetimeCommission || 0),
+    };
+  });
+
+  const activeEnrichedPartner =
+    enrichedPartners.find(
+      (p) => p.id === currentPartner.id || p.code === currentPartner.code
+    ) || enrichedPartners[0] || currentPartner;
 
   // Sync to local storage
   useEffect(() => {
@@ -531,7 +572,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setLeads((prev) => [newLead, ...prev]);
 
-    // Async persist to SQLite backend
+    // Save lead directly to Cloud Firestore Single Source of Truth
+    saveLeadToFirestore(newLead).catch((err) =>
+      console.warn("Cloud Firestore save lead notice:", err)
+    );
+
+    // Automatically push new client/referral registration to FormSubmit in Gmail (mchatterjee69@gmail.com)
+    pushClientRegistrationToFormSubmit({
+      leadId: referralId,
+      clientName: input.clientName,
+      email: input.email,
+      mobile: input.mobile,
+      location: input.location,
+      interestedProgramName: prod?.name || "FREE 5-Day Mind Reset Challenge",
+      partnerName: targetPartner.name,
+      partnerCode: targetPartner.code,
+      partnerId: targetPartner.id,
+      referralSource: input.referralSource || "Direct Partner Referral",
+      preferredContactTime: input.preferredContactTime,
+      notes: input.notes,
+      consent: input.consent,
+      registrationDate: newLead.createdAt,
+    }).catch((err) => console.warn("FormSubmit client push notice:", err));
+
+    // Also persist to SQLite backend for local caching
     try {
       fetch("/api/referrals", {
         method: "POST",
@@ -548,7 +612,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           source: input.referralSource || "Direct Partner Referral",
           notes: input.notes,
         }),
-      }).catch((e) => console.warn("Referral backend sync:", e));
+      })
+        .then((res) => {
+          if (res.ok) {
+            refreshData();
+          }
+        })
+        .catch((e) => console.warn("Referral backend sync:", e));
     } catch (e) {}
 
     // If clean referral, update partner stats
@@ -705,6 +775,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setCommissions((prev) => [rewardCom, ...prev]);
 
+      // Save to Cloud Firestore Financial Ledger
+      recordCommissionInFirestore(rewardCom).catch((err) =>
+        console.warn("Firestore commission notice:", err)
+      );
+      recordLedgerTransactionInFirestore({
+        id: `TXN-REW-${Date.now()}`,
+        partnerId: targetLead.partnerId,
+        type: "REWARD",
+        amount: businessRules.challengeActivationReward,
+        referenceId: targetLead.id,
+        description: `₹49 Mind Reset Activation Reward for verified completion (${targetLead.clientName})`,
+        createdAt: new Date().toISOString(),
+      }).catch((err) => console.warn("Firestore ledger notice:", err));
+
       // Update partner wallet/earnings
       setPartners((prev) =>
         prev.map((p) => {
@@ -768,19 +852,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setCommissions((prev) => [newCommission, ...prev]);
 
+    // Save to Cloud Firestore Financial Ledger
+    recordCommissionInFirestore(newCommission).catch((err) =>
+      console.warn("Firestore commission notice:", err)
+    );
+    recordLedgerTransactionInFirestore({
+      id: `TXN-COM-${Date.now()}`,
+      partnerId: partner.id,
+      type: "COMMISSION",
+      amount: commissionAmt,
+      referenceId: comId,
+      description: `${rate}% commission for ${prod.name} (${lead.clientName}): ₹${commissionAmt.toFixed(2)}`,
+      createdAt: new Date().toISOString(),
+    }).catch((err) => console.warn("Firestore ledger notice:", err));
+
     // Update lead
     setLeads((prev) =>
-      prev.map((l) =>
-        l.id === leadId
-          ? {
-              ...l,
-              status: "PAID_CUSTOMER",
-              paidAmount: (l.paidAmount || 0) + amount,
-              commissionEarned: (l.commissionEarned || 0) + commissionAmt,
-              convertedDate: new Date().toISOString(),
-            }
-          : l
-      )
+      prev.map((l) => {
+        if (l.id === leadId) {
+          const updated = {
+            ...l,
+            status: "PAID_CUSTOMER" as const,
+            paidAmount: (l.paidAmount || 0) + amount,
+            commissionEarned: (l.commissionEarned || 0) + commissionAmt,
+            convertedDate: new Date().toISOString(),
+          };
+          saveLeadToFirestore(updated).catch((err) => console.warn("Firestore lead update notice:", err));
+          return updated;
+        }
+        return l;
+      })
     );
 
     // Update partner revenue & customers
@@ -925,6 +1026,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
     );
 
+    const updatedPayout: PayoutRecord = {
+      ...pRecord,
+      status: "PAID",
+      paidAmount: pRecord.payableAmount,
+      payoutDate: new Date().toISOString().slice(0, 10),
+      paymentMethod,
+      transactionRef,
+      processedBy: "Admin Finance",
+    };
+    recordPayoutInFirestore(updatedPayout).catch((err) =>
+      console.warn("Firestore record payout notice:", err)
+    );
+    recordLedgerTransactionInFirestore({
+      id: `TXN-PAY-${Date.now()}`,
+      partnerId: pRecord.partnerId,
+      type: "PAYOUT",
+      amount: pRecord.payableAmount,
+      referenceId: payoutId,
+      description: `Payout processed via ${paymentMethod} (${transactionRef})`,
+      createdAt: new Date().toISOString(),
+    }).catch((err) => console.warn("Firestore txn notice:", err));
+
     // Mark associated partner's PAYABLE commissions as PAID
     setCommissions((prev) =>
       prev.map((c) =>
@@ -982,7 +1105,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const partner = partners.find((p) => p.id === partnerId) || currentPartner;
     const timestamp = new Date().toISOString();
     const rzpTxnId = `rzp_pout_${Date.now()}`;
-    const utrNo = `UTR-P2IP-${Math.floor(100000000000 + Math.random() * 900000000000)}`;
+    const utrNo = `UTR-P2IP-${Date.now()}`;
 
     // Mark payable commissions as PAID up to requested amount
     let remaining = amount;
@@ -1017,6 +1140,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setPayouts((prev) => [newPayout, ...prev]);
+
+    // Save to Cloud Firestore
+    recordPayoutInFirestore(newPayout).catch((err) =>
+      console.warn("Firestore record payout notice:", err)
+    );
+    recordLedgerTransactionInFirestore({
+      id: `TXN-PAY-${Date.now()}`,
+      partnerId,
+      type: "PAYOUT",
+      amount,
+      referenceId: newPayout.id,
+      description: `Razorpay Instant Payout (UTR: ${utrNo})`,
+      createdAt: timestamp,
+    }).catch((err) => console.warn("Firestore txn notice:", err));
 
     // Update partner's lifetime commissions paid and bank details
     setPartners((prev) =>
@@ -1197,6 +1334,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setPartners((prev) => [partner, ...prev]);
     addAuditLog("PARTNER_CREATED", "PARTNER_LEVEL", partner.id, "NONE", partner.name);
+
+    // Save to Cloud Firestore
+    savePartnerToFirestore(partner).catch((err) =>
+      console.warn("Cloud Firestore save partner notice:", err)
+    );
+
+    // Automatically push partner data to FormSubmit in Gmail (mchatterjee69@gmail.com)
+    pushPartnerRegistrationToFormSubmit({
+      partnerId: partner.id,
+      name: partner.name,
+      code: partner.code,
+      email: partner.email,
+      mobile: partner.mobile,
+      partnerType: partner.partnerType,
+      organisation: partner.organisation,
+      location: partner.location,
+      panNumber: partner.panNumber,
+      aadhaarNumber: partner.aadhaarNumber,
+      upiId: partner.bankDetails?.upiId,
+      bankName: partner.bankDetails?.bankName,
+      referralUrl: partner.referralUrl,
+      registrationDate: partner.joiningDate,
+    }).catch((err) => console.warn("FormSubmit partner notice:", err));
+
+    // Persist to backend database
+    try {
+      fetch("/api/partners/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: partner.id,
+          name: partner.name,
+          fullName: partner.name,
+          email: partner.email,
+          mobile: partner.mobile,
+          partnerType: partner.partnerType,
+          organization: partner.organisation,
+          referralCode: partner.code,
+          location: partner.location,
+          preferredRate: partner.customCommissionRate || 50,
+          notes: "Created via Admin Portal",
+        }),
+      })
+        .then((res) => {
+          if (res.ok) refreshData();
+        })
+        .catch((e) => console.warn("Admin create partner sync:", e));
+    } catch (e) {}
   };
 
   const togglePartnerStatus = (partnerId: string) => {
@@ -1228,7 +1413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const partner = partners.find((p) => p.id === pId);
       const totalAmount = comms.reduce((sum, c) => sum + c.commissionAmount, 0);
       const payout: PayoutRecord = {
-        id: `P2IP-PAY-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`,
+        id: `P2IP-PAY-${Date.now()}-${payouts.length + 1}`,
         partnerId: pId,
         partnerName: partner?.name || "Partner",
         payableAmount: totalAmount,
@@ -1458,7 +1643,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
-  const selfRegisterPartner = (
+  const selfRegisterPartner = async (
     data: Partial<Partner> & {
       password: string;
       twoStepAuthPin: string;
@@ -1469,14 +1654,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   ) => {
     const cleanCode = data.code.trim().toUpperCase();
-    if (partners.some((p) => p.code.toUpperCase() === cleanCode)) {
+    const cleanMobile = data.mobile.replace(/[^0-9]/g, "");
+    const cleanEmail = data.email.trim().toLowerCase();
+    const cleanPan = data.panNumber ? data.panNumber.trim().toUpperCase() : "";
+    const cleanAadhaar = data.aadhaarNumber ? data.aadhaarNumber.replace(/[^0-9]/g, "") : "";
+
+    // Comprehensive duplicate check across all partner profile credentials
+    const existing = partners.find((p) => {
+      const pMobile = p.mobile.replace(/[^0-9]/g, "");
+      const matchMobile = cleanMobile.length >= 10 && (pMobile.endsWith(cleanMobile.slice(-10)) || cleanMobile.endsWith(pMobile.slice(-10)));
+      const matchEmail = cleanEmail.length > 3 && p.email.trim().toLowerCase() === cleanEmail;
+      const matchCode = p.code.trim().toUpperCase() === cleanCode;
+      const matchPan = cleanPan && p.panNumber && p.panNumber.trim().toUpperCase() === cleanPan;
+      const matchAadhaar = cleanAadhaar && p.aadhaarNumber && p.aadhaarNumber.replace(/[^0-9]/g, "") === cleanAadhaar;
+      return matchMobile || matchEmail || matchCode || matchPan || matchAadhaar;
+    });
+
+    if (existing) {
+      let matchedReason = `Partner Code '${existing.code}'`;
+      if (cleanMobile.length >= 10 && existing.mobile.replace(/[^0-9]/g, "").endsWith(cleanMobile.slice(-10))) {
+        matchedReason = `Mobile Number (+91 ${cleanMobile.slice(-10)})`;
+      } else if (cleanEmail.length > 3 && existing.email.trim().toLowerCase() === cleanEmail) {
+        matchedReason = `Email Address (${data.email})`;
+      } else if (cleanPan && existing.panNumber?.toUpperCase() === cleanPan) {
+        matchedReason = `PAN Card Number (${cleanPan})`;
+      }
+
       return {
         success: false,
-        error: `Referral ID "${cleanCode}" is already taken. Please enter a different unique Referral ID.`,
+        isDuplicate: true,
+        existingPartner: existing,
+        error: `Duplicate registration prohibited: A partner account is already registered with this ${matchedReason} under Partner Code: ${existing.code} (${existing.name}). Once your unique partner code is generated, you can log in directly and cannot register once again.`,
       };
     }
 
-    const newPartnerId = `P2IP-PT-${Math.floor(10000 + Math.random() * 90000)}`;
+    const partnerSeq = partners.length + 1;
+    const newPartnerId = `P2IP-PT-${String(partnerSeq).padStart(4, "0")}`;
     const newPartner: Partner = {
       id: newPartnerId,
       code: cleanCode,
@@ -1510,47 +1723,129 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       termsVersion: "v1.2",
     };
 
-    setPartners((prev) => [newPartner, ...prev]);
-    setCurrentPartnerState(newPartner);
-    setCurrentRole("partner");
-    setActiveTab("dashboard");
-    setAuthSession({
-      isAuthenticated: true,
-      role: "partner",
-      partnerId: newPartner.id,
-      partnerCode: newPartner.code,
-      partnerName: newPartner.name,
-      loginTimestamp: new Date().toISOString(),
-    });
-
-    addAuditLog(
-      "PARTNER_SELF_REGISTERED",
-      "PARTNER_LEVEL",
-      newPartner.id,
-      "NONE",
-      newPartner.code,
-      `Partner self-registered with Referral ID: ${cleanCode} and self-created 2-step authentication PIN.`
-    );
-
-    // Persist to backend database
+    // Persist to backend database first
     try {
-      fetch("/api/partners/register", {
+      const res = await fetch("/api/partners/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: newPartner.id,
           name: newPartner.name,
+          fullName: newPartner.name,
           email: newPartner.email,
           mobile: newPartner.mobile,
           partnerType: newPartner.partnerType,
           organization: newPartner.organisation,
           referralCode: newPartner.code,
+          location: newPartner.location,
+          password: newPartner.password,
+          twoStepPin: newPartner.twoStepAuthPin,
+          panNumber: newPartner.panNumber,
+          aadhaarNumber: newPartner.aadhaarNumber,
           preferredRate: 50,
           notes: "Self-registered via Portal",
         }),
-      }).catch((e) => console.warn("Backend register sync:", e));
-    } catch (e) {}
+      });
 
-    return { success: true, partner: newPartner };
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          isDuplicate: res.status === 409,
+          error: errJson.error || "Partner registration rejected by server.",
+        };
+      }
+
+      const resJson = await res.json();
+      const confirmedPartner: Partner = resJson.partner || newPartner;
+
+      setPartners((prev) => [confirmedPartner, ...prev.filter((p) => p.id !== confirmedPartner.id)]);
+      setCurrentPartnerState(confirmedPartner);
+      setCurrentRole("partner");
+      setActiveTab("dashboard");
+      setAuthSession({
+        isAuthenticated: true,
+        role: "partner",
+        partnerId: confirmedPartner.id,
+        partnerCode: confirmedPartner.code,
+        partnerName: confirmedPartner.name,
+        loginTimestamp: new Date().toISOString(),
+      });
+
+      // Save directly to Cloud Firestore Single Source of Truth
+      savePartnerToFirestore(confirmedPartner).catch((err) =>
+        console.warn("Cloud Firestore save partner notice:", err)
+      );
+
+      // Automatically push new partner registration to FormSubmit in Gmail (mchatterjee69@gmail.com)
+      pushPartnerRegistrationToFormSubmit({
+        partnerId: confirmedPartner.id,
+        name: confirmedPartner.name,
+        code: confirmedPartner.code,
+        email: confirmedPartner.email,
+        mobile: confirmedPartner.mobile,
+        partnerType: confirmedPartner.partnerType,
+        organisation: confirmedPartner.organisation,
+        location: confirmedPartner.location,
+        panNumber: confirmedPartner.panNumber,
+        aadhaarNumber: confirmedPartner.aadhaarNumber,
+        upiId: confirmedPartner.bankDetails?.upiId,
+        bankName: confirmedPartner.bankDetails?.bankName,
+        referralUrl: confirmedPartner.referralUrl,
+        registrationDate: confirmedPartner.joiningDate,
+      }).catch((err) => console.warn("FormSubmit partner push notice:", err));
+
+      addAuditLog(
+        "PARTNER_SELF_REGISTERED",
+        "PARTNER_LEVEL",
+        confirmedPartner.id,
+        "NONE",
+        confirmedPartner.code,
+        `Partner self-registered with Referral ID: ${cleanCode} and self-created 2-step authentication PIN.`
+      );
+
+      // Refresh to ensure all data is in sync
+      refreshData();
+
+      return { success: true, partner: confirmedPartner };
+    } catch (err: any) {
+      // Local fallback if offline
+      setPartners((prev) => [newPartner, ...prev]);
+      setCurrentPartnerState(newPartner);
+      setCurrentRole("partner");
+      setActiveTab("dashboard");
+      setAuthSession({
+        isAuthenticated: true,
+        role: "partner",
+        partnerId: newPartner.id,
+        partnerCode: newPartner.code,
+        partnerName: newPartner.name,
+        loginTimestamp: new Date().toISOString(),
+      });
+
+      savePartnerToFirestore(newPartner).catch((e) =>
+        console.warn("Cloud Firestore fallback save notice:", e)
+      );
+
+      pushPartnerRegistrationToFormSubmit({
+        partnerId: newPartner.id,
+        name: newPartner.name,
+        code: newPartner.code,
+        email: newPartner.email,
+        mobile: newPartner.mobile,
+        partnerType: newPartner.partnerType,
+        organisation: newPartner.organisation,
+        location: newPartner.location,
+        panNumber: newPartner.panNumber,
+        aadhaarNumber: newPartner.aadhaarNumber,
+        upiId: newPartner.bankDetails?.upiId,
+        bankName: newPartner.bankDetails?.bankName,
+        referralUrl: newPartner.referralUrl,
+        registrationDate: newPartner.joiningDate,
+      }).catch((e) => console.warn("FormSubmit fallback notice:", e));
+
+      return { success: true, partner: newPartner };
+    }
   };
 
   const adminLogin = (password: string) => {
@@ -1650,10 +1945,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         selfRegisterPartner,
         adminLogin,
         logout,
+        refreshData,
         partners,
         leads,
         products,
         commissions,
+        transactions,
         partnerLevels,
         campaigns,
         clientNodes,

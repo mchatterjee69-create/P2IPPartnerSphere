@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "partners": {
+      "title": "Partner",
+      "description": "Registered referral partners in P2IP PartnerSphere",
+      "type": "object",
+      "properties": {
+        "partnerId": { "type": "string" },
+        "authUid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "partnerType": { "type": "string" },
+        "organizationName": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "PENDING_APPROVAL", "SUSPENDED"] },
+        "referralCode": { "type": "string" },
+        "referralLink": { "type": "string" },
+        "joinedAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "payoutProfileStatus": { "type": "string" },
+        "totalReferrals": { "type": "number" },
+        "totalPaidCustomers": { "type": "number" },
+        "totalEarned": { "type": "number" },
+        "totalPaidOut": { "type": "number" },
+        "availableBalance": { "type": "number" }
+      },
+      "required": ["partnerId", "name", "phone", "email", "referralCode", "status"]
+    },
+    "leads": {
+      "title": "Lead",
+      "description": "Client referrals registered through partner referral links",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "partnerId": { "type": "string" },
+        "partnerCode": { "type": "string" },
+        "partnerName": { "type": "string" },
+        "clientName": { "type": "string" },
+        "mobile": { "type": "string" },
+        "email": { "type": "string" },
+        "location": { "type": "string" },
+        "programId": { "type": "string" },
+        "programName": { "type": "string" },
+        "source": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string" },
+        "paidAmount": { "type": "number" },
+        "commissionEarned": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "partnerId", "clientName", "mobile", "status"]
+    },
+    "transactions": {
+      "title": "Transaction",
+      "description": "Ledger entries for commissions, rewards, and payouts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "partnerId": { "type": "string" },
+        "type": { "type": "string", "enum": ["COMMISSION", "REWARD", "PAYOUT", "ADJUSTMENT"] },
+        "amount": { "type": "number" },
+        "referenceId": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "partnerId", "type", "amount", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/partners/{partnerId}": {
+      "schema": "partners",
+      "description": "Partner profiles"
+    },
+    "/leads/{leadId}": {
+      "schema": "leads",
+      "description": "Client referral leads"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "transactions",
+      "description": "Financial ledger transactions"
+    }
+  }
+}

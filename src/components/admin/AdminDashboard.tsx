@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useApp } from "../../context/AppContext";
 import {
   Shield,
@@ -15,6 +15,8 @@ import {
   BarChart3,
   Calendar,
   ChevronRight,
+  RefreshCw,
+  Database,
 } from "lucide-react";
 
 export const AdminDashboard: React.FC = () => {
@@ -25,7 +27,16 @@ export const AdminDashboard: React.FC = () => {
     products,
     setActiveTab,
     setIsQuickReferOpen,
+    refreshData,
   } = useApp();
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshData();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   // 10 Executive metrics calculation
   const totalPartners = partners.length;
@@ -80,7 +91,17 @@ export const AdminDashboard: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+            title="Refresh latest partners, leads and commissions directly from SQLite database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-[#F5D77F] ${isRefreshing ? "animate-spin" : ""}`} />
+            <span>{isRefreshing ? "Syncing..." : "Sync DB"}</span>
+          </button>
+
           <button
             onClick={() => setActiveTab("admin-ai")}
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B48220] text-gray-950 font-bold text-xs shadow-md hover:shadow-lg transition flex items-center gap-1.5 cursor-pointer"
