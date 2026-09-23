@@ -14,6 +14,8 @@ import {
   ChevronDown,
   LogOut,
   Lock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 export const Navbar: React.FC = () => {
@@ -49,8 +51,8 @@ export const Navbar: React.FC = () => {
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-[#0F5132]/10 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-3">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
+          {/* Logo & Browser History Navigation */}
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => {
                 setActiveTab(currentRole === "admin" ? "admin-dashboard" : "dashboard");
@@ -60,6 +62,29 @@ export const Navbar: React.FC = () => {
             >
               <BrandLogo size="md" />
             </button>
+
+            {/* In-app Back & Forward Navigation Controls (Behaves like a full website) */}
+            <div className="flex items-center bg-[#F5F7F5] border border-[#0F5132]/15 rounded-lg p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => window.history.back()}
+                className="p-1.5 rounded-md text-gray-500 hover:text-[#0F5132] hover:bg-white transition cursor-pointer"
+                title="Go Back (Browser Back)"
+                aria-label="Back"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="w-[1px] h-3.5 bg-gray-300 mx-0.5" />
+              <button
+                type="button"
+                onClick={() => window.history.forward()}
+                className="p-1.5 rounded-md text-gray-500 hover:text-[#0F5132] hover:bg-white transition cursor-pointer"
+                title="Go Forward (Browser Forward)"
+                aria-label="Forward"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Center: Interactive Role Switcher & Partner Persona Selector */}

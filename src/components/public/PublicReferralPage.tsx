@@ -14,6 +14,7 @@ import {
   Moon,
   MessageSquare,
   AlertCircle,
+  ChevronLeft,
 } from "lucide-react";
 
 export const PublicReferralPage: React.FC = () => {
@@ -74,10 +75,18 @@ export const PublicReferralPage: React.FC = () => {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setActiveTab("dashboard")}
-              className="text-xs font-semibold text-[#0F5132] hover:underline cursor-pointer"
+              onClick={() => {
+                if (typeof window !== "undefined" && window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  setActiveTab("dashboard");
+                }
+              }}
+              className="text-xs font-semibold text-[#0F5132] hover:underline cursor-pointer flex items-center gap-1"
+              title="Return to previous screen"
             >
-              ← Return to App
+              <ChevronLeft className="w-4 h-4" />
+              <span>Return to App</span>
             </button>
           </div>
         </div>

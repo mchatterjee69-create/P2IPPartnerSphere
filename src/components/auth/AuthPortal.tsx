@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useApp } from "../../context/AppContext";
 import {
   ShieldCheck,
@@ -23,11 +23,15 @@ import {
   CreditCard,
   FileText,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { PartnerType } from "../../types";
 import { PartnerWithUsView } from "../partner/PartnerWithUsView";
 import { PARTNER_CLIENT_REFERRAL_TERMS } from "../../data/partnerTermsData";
 import { PartnerSphereAgreementModal } from "./PartnerSphereAgreementModal";
+import { WelcomeScreen } from "./WelcomeScreen";
+import { PartnersphereLogo } from "../common/PartnersphereLogo";
 
 export const AuthPortal: React.FC = () => {
   const {
@@ -39,8 +43,64 @@ export const AuthPortal: React.FC = () => {
     tempPartnerPendingAuth,
   } = useApp();
 
+  // Welcome Screen state matching URL hash and browser history (defaults to true if hash is #welcome or root)
+  const [showWelcomeScreen, setShowWelcomeScreen] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.toLowerCase();
+      if (
+        hash === "#signin" ||
+        hash === "#login" ||
+        hash === "#register" ||
+        hash === "#join" ||
+        hash === "#self-refer" ||
+        hash === "#admin" ||
+        hash === "#partner-with-us"
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   // Tab: "SIGN_IN" | "REGISTER" | "ADMIN" | "PARTNER_WITH_US"
-  const [activeTab, setActiveTab] = useState<"SIGN_IN" | "REGISTER" | "ADMIN" | "PARTNER_WITH_US">("SIGN_IN");
+  const [activeTab, setActiveTab] = useState<"SIGN_IN" | "REGISTER" | "ADMIN" | "PARTNER_WITH_US">(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === "#register" || hash === "#join" || hash === "#self-refer") return "REGISTER";
+      if (hash === "#admin") return "ADMIN";
+      if (hash === "#partner-with-us") return "PARTNER_WITH_US";
+    }
+    return "SIGN_IN";
+  });
+
+  // History-aware navigation handlers
+  const navigateToAuthTab = (tab: "SIGN_IN" | "REGISTER" | "ADMIN" | "PARTNER_WITH_US") => {
+    setActiveTab(tab);
+    setShowWelcomeScreen(false);
+    let target = "#signin";
+    if (tab === "REGISTER") target = "#register";
+    else if (tab === "ADMIN") target = "#admin";
+    else if (tab === "PARTNER_WITH_US") target = "#partner-with-us";
+
+    if (typeof window !== "undefined" && window.location.hash !== target) {
+      window.history.pushState({ authTab: tab }, "", target);
+    }
+  };
+
+  const navigateToWelcome = () => {
+    setShowWelcomeScreen(true);
+    if (typeof window !== "undefined" && window.location.hash !== "#welcome" && window.location.hash !== "") {
+      window.history.pushState({ view: "welcome" }, "", "#welcome");
+    }
+  };
+
+  const handleBackAction = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigateToWelcome();
+    }
+  };
 
   // Sign In State
   const [signInStep, setSignInStep] = useState<1 | 2>(1);
@@ -72,6 +132,48 @@ export const AuthPortal: React.FC = () => {
   const [isDeclarationModalOpen, setIsDeclarationModalOpen] = useState(false);
   const [declarationAccepted, setDeclarationAccepted] = useState(false);
 
+  // Browser Back / Forward History Listener for AuthPortal
+  useEffect(() => {
+    const handleBrowserHistory = () => {
+      // 1. If Declaration Modal is open, back button closes it cleanly
+      if (isDeclarationModalOpen) {
+        setIsDeclarationModalOpen(false);
+        return;
+      }
+
+      // 2. If user is in Step 2 of 2-Step Sign In, step back to Step 1
+      if (signInStep === 2) {
+        setSignInStep(1);
+        return;
+      }
+
+      // 3. Inspect URL hash
+      const hash = (typeof window !== "undefined" ? window.location.hash : "").toLowerCase();
+      if (!hash || hash === "#" || hash === "#welcome") {
+        setShowWelcomeScreen(true);
+      } else if (hash === "#register" || hash === "#join" || hash === "#self-refer") {
+        setShowWelcomeScreen(false);
+        setActiveTab("REGISTER");
+      } else if (hash === "#signin" || hash === "#login") {
+        setShowWelcomeScreen(false);
+        setActiveTab("SIGN_IN");
+      } else if (hash === "#admin") {
+        setShowWelcomeScreen(false);
+        setActiveTab("ADMIN");
+      } else if (hash === "#partner-with-us") {
+        setShowWelcomeScreen(false);
+        setActiveTab("PARTNER_WITH_US");
+      }
+    };
+
+    window.addEventListener("popstate", handleBrowserHistory);
+    window.addEventListener("hashchange", handleBrowserHistory);
+    return () => {
+      window.removeEventListener("popstate", handleBrowserHistory);
+      window.removeEventListener("hashchange", handleBrowserHistory);
+    };
+  }, [isDeclarationModalOpen, signInStep]);
+
   // Admin Login State
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminError, setAdminError] = useState<string | null>(null);
@@ -86,6 +188,9 @@ export const AuthPortal: React.FC = () => {
       return;
     }
     setSignInStep(2);
+    if (typeof window !== "undefined") {
+      window.history.pushState({ step: 2 }, "", "#signin-step2");
+    }
   };
 
   // Sign in Step 2 (2-Step Verification) Handler
@@ -184,6 +289,9 @@ export const AuthPortal: React.FC = () => {
 
     // Input validations passed! Automatically pop up the P2IP PartnerSphere Agreement & Disclosure
     setIsDeclarationModalOpen(true);
+    if (typeof window !== "undefined") {
+      window.history.pushState({ modal: "declaration" }, "", window.location.hash || "#register");
+    }
   };
 
   // When partner confirms radioactive agreement & joins, create account & open portal immediately
@@ -238,24 +346,28 @@ export const AuthPortal: React.FC = () => {
     }
   };
 
+  if (showWelcomeScreen) {
+    return (
+      <WelcomeScreen
+        onJoinNow={() => navigateToAuthTab("REGISTER")}
+        onDirectSignIn={() => navigateToAuthTab("SIGN_IN")}
+        onDirectAdmin={() => navigateToAuthTab("ADMIN")}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F4F6F4] flex flex-col justify-between" id="auth-portal-container">
       {/* Top Header Bar */}
       <header className="bg-[#0F5132] text-white border-b border-[#D4AF37]/30 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
-              <img
-                src="/p2ip-logo.webp"
-                onError={(e) => {
-                  e.currentTarget.src = "https://yourimageshare.com/ib/Lqlh3mtjO0.png";
-                }}
-                alt="P2IP Logo"
-                className="w-full h-full rounded-full object-contain"
-                referrerPolicy="no-referrer"
-                loading="eager"
-              />
-            </div>
+          <button
+            type="button"
+            onClick={navigateToWelcome}
+            className="flex items-center gap-3 text-left hover:opacity-90 transition cursor-pointer"
+            title="Click to view Welcome Screen"
+          >
+            <PartnersphereLogo size={40} className="shrink-0 shadow-md" />
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-sm sm:text-base tracking-wide text-white">
@@ -269,7 +381,17 @@ export const AuthPortal: React.FC = () => {
                 Official Partner Management System • Path to Inner Peace
               </p>
             </div>
-          </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleBackAction}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#F5D77F] border border-[#D4AF37]/40 text-xs font-bold transition cursor-pointer shadow-xs"
+            title="Go back (Browser history)"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Welcome Screen</span>
+          </button>
         </div>
       </header>
 
@@ -278,10 +400,10 @@ export const AuthPortal: React.FC = () => {
         <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 my-4">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6 bg-white p-4 rounded-2xl border border-gray-200 shadow-xs">
             <button
-              onClick={() => setActiveTab("SIGN_IN")}
+              onClick={handleBackAction}
               className="px-4 py-2 rounded-xl bg-[#0F5132] text-white text-xs font-bold flex items-center gap-2 hover:bg-[#125838] transition cursor-pointer shadow-xs"
             >
-              <LogIn className="w-4 h-4 text-[#F5D77F]" />
+              <ChevronLeft className="w-4 h-4 text-[#F5D77F]" />
               <span>← Back to Partner Sign In Gateway</span>
             </button>
           </div>
@@ -296,9 +418,20 @@ export const AuthPortal: React.FC = () => {
             <div className="bg-gradient-to-br from-[#0F5132] via-[#125838] to-[#1a6b47] text-white p-6 sm:p-8 relative overflow-hidden">
               <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-40 h-40 bg-[#D4AF37]/10 rounded-full blur-2xl pointer-events-none" />
 
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-[#F5D77F] text-xs font-bold mb-3">
-                <ShieldCheck className="w-4 h-4 text-[#F5D77F]" />
-                2-Step Protected Authentication
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={handleBackAction}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-200 hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-lg border border-white/20 transition cursor-pointer"
+                  title="Go back (Browser history)"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Back</span>
+                </button>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-[#F5D77F] text-xs font-bold">
+                  <ShieldCheck className="w-4 h-4 text-[#F5D77F]" />
+                  2-Step Protected Authentication
+                </div>
               </div>
 
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
@@ -313,10 +446,10 @@ export const AuthPortal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    setActiveTab("SIGN_IN");
+                    navigateToAuthTab("SIGN_IN");
                     setSignInError(null);
                   }}
-                  className={`py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer text-xs ${
+                  className={`py-2.5 px-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer text-xs ${
                     activeTab === "SIGN_IN"
                       ? "bg-white text-[#0F5132] shadow-md font-extrabold"
                       : "text-emerald-100 hover:text-white"
@@ -329,33 +462,33 @@ export const AuthPortal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    setActiveTab("REGISTER");
+                    navigateToAuthTab("REGISTER");
                     setRegError(null);
                   }}
-                  className={`py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer text-xs ${
+                  className={`py-2.5 px-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer text-xs ${
                     activeTab === "REGISTER"
                       ? "bg-white text-[#0F5132] shadow-md font-extrabold"
                       : "text-emerald-100 hover:text-white"
                   }`}
                 >
                   <UserPlus className="w-3.5 h-3.5 shrink-0" />
-                  <span>Self-Registration</span>
+                  <span>Self Refer & Register</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    setActiveTab("ADMIN");
+                    navigateToAuthTab("ADMIN");
                     setAdminError(null);
                   }}
-                  className={`py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer text-xs ${
+                  className={`py-2.5 px-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer text-xs ${
                     activeTab === "ADMIN"
                       ? "bg-white text-[#0F5132] shadow-md font-extrabold"
                       : "text-emerald-100 hover:text-white"
                   }`}
                 >
                   <Shield className="w-3.5 h-3.5 shrink-0" />
-                  <span>Admin</span>
+                  <span>Admin Panel</span>
                 </button>
               </div>
             </div>
@@ -510,12 +643,14 @@ export const AuthPortal: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
-                          setSignInStep(1);
+                          handleBackAction();
                           setSignInError(null);
                         }}
-                        className="text-[11px] text-gray-500 hover:text-gray-800 underline"
+                        className="text-[11px] text-gray-500 hover:text-gray-800 underline inline-flex items-center gap-1 cursor-pointer"
+                        title="Back to Step 1 (Change Referral ID)"
                       >
-                        Change Referral ID
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>Change Referral ID</span>
                       </button>
                     </div>
 
@@ -971,7 +1106,12 @@ export const AuthPortal: React.FC = () => {
       {/* P2IP PARTNERSPHERE TERMS & CONDITIONS DISCLOSURE MODAL (24 Clauses, Campaign Rules, Disclosures & 10 Radioactive Checkboxes) */}
       <PartnerSphereAgreementModal
         isOpen={isDeclarationModalOpen}
-        onClose={() => setIsDeclarationModalOpen(false)}
+        onClose={() => {
+          setIsDeclarationModalOpen(false);
+          if (typeof window !== "undefined" && window.history.length > 1) {
+            window.history.back();
+          }
+        }}
         onConfirmAndOpenPortal={handleConfirmDeclarationAndOpenPortal}
         partnerDetails={{
           name: regName,

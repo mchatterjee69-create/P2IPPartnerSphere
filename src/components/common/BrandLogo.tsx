@@ -1,4 +1,5 @@
 import React from "react";
+import { PartnersphereLogo } from "./PartnersphereLogo";
 
 interface BrandLogoProps {
   className?: string;
@@ -18,22 +19,8 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 
   return (
     <div className={`flex items-center gap-2.5 select-none ${className}`} id="brand-logo-container">
-      {/* Official P2IP round logo with no cover */}
-      <div
-        className="relative flex items-center justify-center rounded-full shrink-0 overflow-hidden"
-        style={{ width: iconSize, height: iconSize }}
-      >
-        <img
-          src="/p2ip-logo.webp"
-          onError={(e) => {
-            e.currentTarget.src = "https://yourimageshare.com/ib/Lqlh3mtjO0.png";
-          }}
-          alt="P2IP Logo"
-          className="w-full h-full rounded-full object-contain"
-          referrerPolicy="no-referrer"
-          loading="eager"
-        />
-      </div>
+      {/* Official circular 3-figure Partnersphere logo from brand specification */}
+      <PartnersphereLogo size={iconSize} className="shrink-0" />
 
       <div className="flex flex-col">
         <div className="flex items-center gap-1.5">

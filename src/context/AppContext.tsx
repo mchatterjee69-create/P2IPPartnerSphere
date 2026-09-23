@@ -314,14 +314,150 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [businessRules, setBusinessRules] = useState<BusinessRulesSettings>(INITIAL_BUSINESS_RULES);
 
-  const [activeTab, setActiveTab] = useState<string>("dashboard");
+  // Active Tab state with URL hash and browser history synchronization
+  const [activeTab, setActiveTabState] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.replace("#", "").toLowerCase();
+      const knownTabs = [
+        "dashboard", "leads", "followups", "wallet", "earnings", "growth",
+        "inner-circle", "marketing", "analytics", "ai-assistant", "partner-ai",
+        "partner-with-us", "profile", "more", "public-referral",
+        "admin-dashboard", "admin-leads", "admin-partners", "admin-catalogue",
+        "admin-products", "admin-payouts", "admin-campaigns", "admin-automation",
+        "admin-automations", "admin-ai", "admin-audit", "admin-settings"
+      ];
+      if (knownTabs.includes(hash)) {
+        if (hash === "earnings") return "wallet";
+        if (hash === "partner-ai") return "ai-assistant";
+        if (hash === "admin-products") return "admin-catalogue";
+        if (hash === "admin-automations") return "admin-automation";
+        return hash;
+      }
+    }
+    return "dashboard";
+  });
+
+  const setActiveTab = (newTab: string) => {
+    setActiveTabState(newTab);
+    if (typeof window !== "undefined") {
+      const targetHash = `#${newTab}`;
+      if (window.location.hash !== targetHash) {
+        window.history.pushState({ tab: newTab }, "", targetHash);
+      }
+    }
+  };
+
   const [publicReferralCode, setPublicReferralCode] = useState<string | null>(null);
 
-  // Modals state
-  const [isQuickReferOpen, setIsQuickReferOpen] = useState(false);
-  const [isQRCodeOpen, setIsQRCodeOpen] = useState(false);
-  const [isTermsOpen, setIsTermsOpen] = useState(false);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  // Modals state with browser history integration
+  const [isQuickReferOpen, setIsQuickReferOpenRaw] = useState(false);
+  const [isQRCodeOpen, setIsQRCodeOpenRaw] = useState(false);
+  const [isTermsOpen, setIsTermsOpenRaw] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpenRaw] = useState(false);
+
+  const setIsQuickReferOpen = (open: boolean) => {
+    setIsQuickReferOpenRaw(open);
+    if (open && typeof window !== "undefined") {
+      window.history.pushState({ modal: "quick-refer" }, "", window.location.hash || "#");
+    }
+  };
+
+  const setIsQRCodeOpen = (open: boolean) => {
+    setIsQRCodeOpenRaw(open);
+    if (open && typeof window !== "undefined") {
+      window.history.pushState({ modal: "qr-code" }, "", window.location.hash || "#");
+    }
+  };
+
+  const setIsTermsOpen = (open: boolean) => {
+    setIsTermsOpenRaw(open);
+    if (open && typeof window !== "undefined") {
+      window.history.pushState({ modal: "terms" }, "", window.location.hash || "#");
+    }
+  };
+
+  const setIsNotificationsOpen = (open: boolean) => {
+    setIsNotificationsOpenRaw(open);
+    if (open && typeof window !== "undefined") {
+      window.history.pushState({ modal: "notifications" }, "", window.location.hash || "#");
+    }
+  };
+
+  // Listen to browser Back / Forward (popstate and hashchange)
+  useEffect(() => {
+    const handleBrowserNavigation = () => {
+      // 1. If any modal is open, back button closes it cleanly without leaving the view
+      if (isQuickReferOpen || isQRCodeOpen || isTermsOpen || isNotificationsOpen) {
+        setIsQuickReferOpenRaw(false);
+        setIsQRCodeOpenRaw(false);
+        setIsTermsOpenRaw(false);
+        setIsNotificationsOpenRaw(false);
+        return;
+      }
+
+      // 2. Read current hash and sync active tab
+      const hash = window.location.hash.replace("#", "").toLowerCase();
+      if (!hash || hash === "welcome" || hash === "signin" || hash === "register" || hash === "admin") {
+        if (authSession.isAuthenticated) {
+          setActiveTabState(currentRole === "admin" ? "admin-dashboard" : "dashboard");
+        }
+        return;
+      }
+
+      if (hash === "public-referral" || hash.startsWith("ref=")) {
+        setCurrentRole("public_referral");
+        setActiveTabState("public-referral");
+        return;
+      }
+
+      const knownTabs = [
+        "dashboard", "leads", "followups", "wallet", "earnings", "growth",
+        "inner-circle", "marketing", "analytics", "ai-assistant", "partner-ai",
+        "partner-with-us", "profile", "more",
+        "admin-dashboard", "admin-leads", "admin-partners", "admin-catalogue",
+        "admin-products", "admin-payouts", "admin-campaigns", "admin-automation",
+        "admin-automations", "admin-ai", "admin-audit", "admin-settings"
+      ];
+
+      if (knownTabs.includes(hash)) {
+        let normalized = hash;
+        if (hash === "earnings") normalized = "wallet";
+        if (hash === "partner-ai") normalized = "ai-assistant";
+        if (hash === "admin-products") normalized = "admin-catalogue";
+        if (hash === "admin-automations") normalized = "admin-automation";
+        setActiveTabState(normalized);
+      }
+    };
+
+    window.addEventListener("popstate", handleBrowserNavigation);
+    window.addEventListener("hashchange", handleBrowserNavigation);
+    return () => {
+      window.removeEventListener("popstate", handleBrowserNavigation);
+      window.removeEventListener("hashchange", handleBrowserNavigation);
+    };
+  }, [isQuickReferOpen, isQRCodeOpen, isTermsOpen, isNotificationsOpen, authSession.isAuthenticated, currentRole]);
+
+  // Check URL parameters on mount (e.g. ?ref=DRRA101 or #ref=DRRA101)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const refQuery = searchParams.get("ref") || searchParams.get("partner");
+      let refHash = null;
+      if (window.location.hash.includes("ref=")) {
+        refHash = window.location.hash.split("ref=")[1]?.split("&")[0];
+      }
+      const targetRef = refQuery || refHash;
+      if (targetRef) {
+        setPublicReferralCode(targetRef);
+        const match = partners.find((p) => p.code.toLowerCase() === targetRef.toLowerCase());
+        if (match) {
+          setCurrentPartnerState(match);
+        }
+        setCurrentRole("public_referral");
+        setActiveTabState("public-referral");
+      }
+    }
+  }, [partners]);
 
   // Central refresh function that queries backend and ensures synchronization
   const refreshData = async () => {
@@ -1895,7 +2031,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setTempPartnerPendingAuth(null);
     setCurrentRole("partner");
-    setActiveTab("dashboard");
+    setActiveTabState("dashboard");
+    if (typeof window !== "undefined") {
+      window.history.pushState({ view: "welcome" }, "", "#welcome");
+    }
     try {
       sessionStorage.removeItem(`${STORAGE_KEY}_auth_session_active`);
       localStorage.removeItem(`${STORAGE_KEY}_auth_session`);
