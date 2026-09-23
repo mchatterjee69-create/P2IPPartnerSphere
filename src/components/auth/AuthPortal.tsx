@@ -373,24 +373,11 @@ export const AuthPortal: React.FC = () => {
                 <span className="font-extrabold text-sm sm:text-base tracking-wide text-white">
                   P2IP PartnerSphere™
                 </span>
-                <span className="text-[10px] bg-[#D4AF37]/20 border border-[#D4AF37]/40 text-[#F5D77F] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                  Accredited Portal
-                </span>
               </div>
               <p className="text-[11px] text-emerald-200">
                 Official Partner Management System • Path to Inner Peace
               </p>
             </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleBackAction}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#F5D77F] border border-[#D4AF37]/40 text-xs font-bold transition cursor-pointer shadow-xs"
-            title="Go back (Browser history)"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span>Welcome Screen</span>
           </button>
         </div>
       </header>
