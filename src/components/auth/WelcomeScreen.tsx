@@ -86,10 +86,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         {/* 2. BRAND HEADING */}
         <div className="relative z-10 space-y-1">
           <h1
-            className="text-3xl sm:text-4xl lg:text-[42px] font-black text-[#0B4025] tracking-tight font-serif"
+            className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#0B4025] tracking-tight font-serif whitespace-nowrap"
             style={{ textShadow: "0 1px 2px rgba(11,64,37,0.08)" }}
           >
-            Partnershere
+            P2IP PartnerSphere™
           </h1>
 
           <div className="pt-1.5 space-y-0.5">
