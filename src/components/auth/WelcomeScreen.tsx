@@ -1,17 +1,25 @@
-import React from "react";
+import React, { useState } from "react";
 import { PartnersphereLogo } from "../common/PartnersphereLogo";
+import { CheckCircle2, Copy, Check } from "lucide-react";
+import { Partner } from "../../types";
 
 interface WelcomeScreenProps {
   onJoinNow: () => void;
   onDirectSignIn?: () => void;
   onDirectAdmin?: () => void;
+  newlyRegisteredPartner?: Partner | null;
+  onEnterPortal?: () => void;
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onJoinNow,
   onDirectSignIn,
   onDirectAdmin,
+  newlyRegisteredPartner,
+  onEnterPortal,
 }) => {
+  const [copiedCode, setCopiedCode] = useState(false);
+
   return (
     <div
       className="min-h-screen w-full bg-gradient-to-b from-[#F9FAF9] via-[#F1F6F2] to-[#E3EDE5] flex flex-col items-center justify-center p-4 sm:p-6 select-none relative overflow-hidden"
@@ -33,42 +41,34 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             className="w-full h-full text-[#0F5132]"
           >
             {/* Lotus Petals */}
-            {/* Center petal */}
             <path
               d="M100 20 C92 50, 85 95, 100 135 C115 95, 108 50, 100 20 Z"
               fill="currentColor"
             />
-            {/* Inner left petal */}
             <path
               d="M100 35 C75 60, 65 95, 88 135 C95 105, 96 65, 100 35 Z"
               fill="currentColor"
             />
-            {/* Inner right petal */}
             <path
               d="M100 35 C125 60, 135 95, 112 135 C105 105, 104 65, 100 35 Z"
               fill="currentColor"
             />
-            {/* Middle left petal */}
             <path
               d="M100 55 C60 75, 45 110, 75 138 C84 115, 90 85, 100 55 Z"
               fill="currentColor"
             />
-            {/* Middle right petal */}
             <path
               d="M100 55 C140 75, 155 110, 125 138 C116 115, 110 85, 100 55 Z"
               fill="currentColor"
             />
-            {/* Outer left base petal */}
             <path
               d="M100 80 C40 100, 25 125, 60 142 C72 130, 86 110, 100 80 Z"
               fill="currentColor"
             />
-            {/* Outer right base petal */}
             <path
               d="M100 80 C160 100, 175 125, 140 142 C128 130, 114 110, 100 80 Z"
               fill="currentColor"
             />
-            {/* Base water line curve */}
             <path
               d="M40 144 C75 152, 125 152, 160 144"
               stroke="currentColor"
@@ -78,7 +78,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </svg>
         </div>
 
-        {/* 1. TOP CIRCULAR LOGO (Same 3-person silhouette in dark green badge) */}
+        {/* 1. TOP CIRCULAR LOGO */}
         <div className="relative z-10 pt-2 pb-5">
           <PartnersphereLogo className="w-24 h-24 sm:w-28 sm:h-28 shadow-xl ring-4 ring-[#D4AF37]/30" />
         </div>
@@ -128,19 +128,65 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </p>
         </div>
 
-        {/* 5. PRIMARY CTA BUTTON: JOIN NOW → */}
-        <div className="relative z-10 w-full pt-10 sm:pt-12 pb-2">
-          <button
-            id="welcome-join-now-btn"
-            type="button"
-            onClick={onJoinNow}
-            className="w-full py-4 px-8 rounded-full bg-gradient-to-r from-[#F6C244] via-[#F4B732] to-[#E9A422] hover:from-[#f0bc3a] hover:to-[#dc9614] text-[#0C4427] font-black text-lg sm:text-xl shadow-lg shadow-amber-500/30 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer border border-[#FDE394]"
-          >
-            <span>Join Now</span>
-            <span className="text-2xl font-black leading-none transform translate-y-[-1px]">
-              →
-            </span>
-          </button>
+        {/* 4.5 NEW ACCREDITED PARTNER WELCOME CARD */}
+        {newlyRegisteredPartner && (
+          <div className="relative z-10 w-full mt-4 p-4 rounded-2xl bg-white/95 border border-emerald-300 shadow-md flex flex-col items-center text-center gap-1.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black tracking-wide">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              Accreditation Approved & Active
+            </div>
+            <p className="text-sm sm:text-base font-black text-[#0B4025]">
+              Welcome, {newlyRegisteredPartner.name}!
+            </p>
+            <div className="flex items-center gap-2 bg-[#F1F6F2] px-3.5 py-1.5 rounded-xl border border-emerald-200 mt-0.5">
+              <span className="text-xs font-bold text-gray-600">Referral ID:</span>
+              <span className="text-sm font-black font-mono text-[#0F5132]">{newlyRegisteredPartner.code}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(newlyRegisteredPartner.code);
+                  setCopiedCode(true);
+                  setTimeout(() => setCopiedCode(false), 2000);
+                }}
+                className="p-1 hover:bg-white rounded text-gray-500 hover:text-emerald-700 transition cursor-pointer"
+                title="Copy Referral ID"
+              >
+                {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-500 font-medium">
+              You are now accredited under P2IP PartnerSphere™.
+            </p>
+          </div>
+        )}
+
+        {/* 5. PRIMARY CTA BUTTON: ENTER PORTAL OR JOIN NOW */}
+        <div className="relative z-10 w-full pt-8 sm:pt-10 pb-2">
+          {newlyRegisteredPartner ? (
+            <button
+              id="welcome-enter-portal-btn"
+              type="button"
+              onClick={onEnterPortal || onJoinNow}
+              className="w-full py-4 px-8 rounded-full bg-gradient-to-r from-[#0F5132] via-[#146c43] to-[#D4AF37] hover:brightness-110 text-white font-black text-lg sm:text-xl shadow-lg shadow-emerald-900/30 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer border border-[#D4AF37]/50"
+            >
+              <span>Enter Partner Portal</span>
+              <span className="text-2xl font-black leading-none transform translate-y-[-1px]">
+                →
+              </span>
+            </button>
+          ) : (
+            <button
+              id="welcome-join-now-btn"
+              type="button"
+              onClick={onJoinNow}
+              className="w-full py-4 px-8 rounded-full bg-gradient-to-r from-[#F6C244] via-[#F4B732] to-[#E9A422] hover:from-[#f0bc3a] hover:to-[#dc9614] text-[#0C4427] font-black text-lg sm:text-xl shadow-lg shadow-amber-500/30 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer border border-[#FDE394]"
+            >
+              <span>Join Now</span>
+              <span className="text-2xl font-black leading-none transform translate-y-[-1px]">
+                →
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Direct quick access helpers */}

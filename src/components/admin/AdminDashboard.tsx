@@ -32,6 +32,10 @@ export const AdminDashboard: React.FC = () => {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  React.useEffect(() => {
+    refreshData().catch(() => {});
+  }, []);
+
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
     await refreshData();

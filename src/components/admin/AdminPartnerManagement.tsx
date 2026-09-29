@@ -33,6 +33,10 @@ export const AdminPartnerManagement: React.FC = () => {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  React.useEffect(() => {
+    refreshData().catch(() => {});
+  }, []);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await refreshData();
@@ -61,13 +65,14 @@ export const AdminPartnerManagement: React.FC = () => {
   const [bonusReason, setBonusReason] = useState<string>("");
 
   const filteredPartners = partners.filter((p) => {
+    if (!p) return false;
     const q = searchQuery.toLowerCase();
     const matchSearch =
-      p.name.toLowerCase().includes(q) ||
-      p.organisation.toLowerCase().includes(q) ||
-      p.code.toLowerCase().includes(q) ||
-      p.id.toLowerCase().includes(q) ||
-      p.mobile.includes(q);
+      (p.name || "").toLowerCase().includes(q) ||
+      (p.organisation || "").toLowerCase().includes(q) ||
+      (p.code || "").toLowerCase().includes(q) ||
+      (p.id || "").toLowerCase().includes(q) ||
+      (p.mobile || "").includes(q);
 
     if (!matchSearch) return false;
     if (typeFilter !== "ALL" && p.partnerType !== typeFilter) return false;

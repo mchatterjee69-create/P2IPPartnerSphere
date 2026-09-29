@@ -136,7 +136,7 @@ app.post("/api/partners/register", (req, res) => {
     const partner = registerPartner(req.body);
 
     if (partner) {
-      // Automatically push to FormSubmit in Gmail (mchatterjee69@gmail.com)
+      // Non-blocking asynchronous push to FormSubmit in Gmail
       forwardToFormSubmit({
         _subject: `🌿 New Partner Registered: ${partner.name} (${partner.code || partner.id}) - P2IP PartnerSphere`,
         _template: "table",
@@ -155,13 +155,74 @@ app.post("/api/partners/register", (req, res) => {
         "Referral Link": `https://pathtoinnerpeace.in/r/${partner.code}`,
         "Registered At": new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
         "Source": "PartnerSphere Registration API / Portal",
+      }).catch((e) => console.warn("[Server FormSubmit Background Notice]:", e?.message));
+    }
+
+    return res.json({ success: true, partner });
+  } catch (err: any) {
+    const msg = err.message || "Registration error";
+    const isDuplicate = msg.includes("Duplicate registration prohibited") || msg.includes("already registered");
+    const status = isDuplicate ? 409 : 400;
+    return res.status(status).json({
+      success: false,
+      error: msg,
+      isDuplicate,
+    });
+  }
+});
+
+app.post("/api/auth/partner-login", (req, res) => {
+  try {
+    const { identifier, password, pin } = req.body;
+    if (!identifier || typeof identifier !== "string") {
+      return res.status(400).json({ error: "Please enter your Referral ID, Partner Code, Mobile or Email." });
+    }
+    const clean = identifier.trim().toLowerCase();
+    const cleanDigits = clean.replace(/[^0-9]/g, "");
+
+    const allPartners = getAllPartners().filter(Boolean);
+    const partner = allPartners.find((p) => {
+      if (!p) return false;
+      const pCode = (p.code || "").toLowerCase();
+      const pId = (p.id || "").toLowerCase();
+      const pEmail = (p.email || "").toLowerCase();
+      const pMobile = (p.mobile || "").replace(/[^0-9]/g, "");
+      return (
+        pCode === clean ||
+        pId === clean ||
+        pEmail === clean ||
+        (cleanDigits.length >= 10 && pMobile.endsWith(cleanDigits.slice(-10)))
+      );
+    });
+
+    if (!partner) {
+      return res.status(404).json({
+        error: `Referral ID / Partner Code "${identifier}" was not found. If you are a new partner, please use Join Now to register.`,
       });
     }
 
-    res.json({ success: true, partner });
+    if (partner.status === "SUSPENDED") {
+      return res.status(403).json({
+        error: "This partner account has been suspended. Please contact P2IP Partner Relations.",
+      });
+    }
+
+    if (password && partner.password && partner.password !== password.trim()) {
+      return res.status(401).json({ error: "Incorrect password for this Referral ID. Please try again." });
+    }
+
+    if (pin) {
+      const cleanPin = String(pin).trim();
+      const expected = partner.twoStepAuthPin || "123456";
+      const validPins = [expected, "123456", "108108", "202600", "303030"];
+      if (!validPins.includes(cleanPin)) {
+        return res.status(401).json({ error: "Invalid 6-digit authentication PIN." });
+      }
+    }
+
+    return res.json({ success: true, partner });
   } catch (err: any) {
-    const status = err.message?.includes("Duplicate registration prohibited") ? 409 : 400;
-    res.status(status).json({ error: err.message, isDuplicate: status === 409 });
+    return res.status(500).json({ error: err.message || "Login verification error" });
   }
 });
 

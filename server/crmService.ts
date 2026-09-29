@@ -419,38 +419,96 @@ export function registerPartner(input: PartnerRegistrationInput) {
   const cleanCode = (input.code || input.referralCode || "").trim().toUpperCase();
   const cleanPan = input.panNumber ? input.panNumber.trim().toUpperCase() : "";
   const cleanAadhaar = input.aadhaarNumber ? input.aadhaarNumber.replace(/[^0-9]/g, "") : "";
+  const now = new Date().toISOString();
+  const location = input.location || (input.city ? `${input.city}, ${input.state || "India"}` : "India");
+  const org = (input.organisation || input.organization || "Independent Practice").trim();
+  const pType = input.partnerType || "Individual Referral Partner";
+  const password = (input.password || "p2ip@partner").trim();
+  const twoStepPin = (input.twoStepAuthPin || input.twoStepPin || "123456").trim();
 
-  // Strict duplicate partner registration check: analyze email, normalized mobile (last 10 digits), code, PAN
+  // Check if a partner with matching mobile, email, PAN, or Aadhaar already exists
   const allPartners = db.prepare("SELECT id, code, name, mobile, email, pan_number, aadhaar_number FROM partners").all() as any[];
   const existing = allPartners.find((p) => {
     const pMobile = (p.mobile || "").replace(/[^0-9]/g, "");
     const matchMobile = cleanMobile.length >= 10 && (pMobile.endsWith(cleanMobile.slice(-10)) || cleanMobile.endsWith(pMobile.slice(-10)));
     const matchEmail = cleanEmail.length > 3 && (p.email || "").trim().toLowerCase() === cleanEmail;
-    const matchCode = cleanCode && (p.code || "").toUpperCase() === cleanCode;
     const matchPan = cleanPan && (p.pan_number || "").toUpperCase() === cleanPan;
     const matchAadhaar = cleanAadhaar && (p.aadhaar_number || "").replace(/[^0-9]/g, "") === cleanAadhaar;
-    return matchMobile || matchEmail || matchCode || matchPan || matchAadhaar;
+    return matchMobile || matchEmail || matchPan || matchAadhaar;
   });
 
   if (existing) {
-    throw new Error(
-      `Duplicate registration prohibited: A partner account is already registered with this mobile number or email under Partner Code: ${existing.code} (${existing.name}). Once your unique partner code is generated, you can log in directly and cannot register once again.`
-    );
+    // Partner already exists - seamlessly update terms acceptance, credentials, and details
+    db.prepare(`
+      UPDATE partners
+      SET terms_accepted = 1,
+          terms_accepted_at = ?,
+          password = ?,
+          two_step_pin = ?,
+          location = COALESCE(?, location),
+          organisation = COALESCE(?, organisation),
+          status = CASE WHEN status = 'SUSPENDED' THEN 'SUSPENDED' ELSE 'ACTIVE' END
+      WHERE id = ?
+    `).run(now, password, twoStepPin, location, org, existing.id);
+
+    try {
+      db.prepare("UPDATE users SET password_hash = ? WHERE partner_id = ? OR email = ?").run(
+        password,
+        existing.id,
+        existing.email
+      );
+    } catch (e) {}
+
+    const updatedRow = db.prepare("SELECT * FROM partners WHERE id = ?").get(existing.id);
+    return {
+      ...formatPartnerToCamel(updatedRow),
+      isExisting: true,
+    };
   }
 
-  const countRow = db.prepare("SELECT COUNT(*) as count FROM partners").get() as { count: number };
-  const partnerId = input.id && input.id.startsWith("P2IP-PT-")
-    ? input.id
-    : `P2IP-PT-${String(Number(countRow?.count || 0) + 1).padStart(4, "0")}`;
+  // Collision-free Partner ID generator that scans existing records and guarantees uniqueness
+  const getNextSafePartnerId = (requestedId?: string): string => {
+    if (requestedId && requestedId.startsWith("P2IP-PT-")) {
+      const existingDoc = db.prepare("SELECT id FROM partners WHERE id = ?").get(requestedId);
+      if (!existingDoc) {
+        return requestedId;
+      }
+    }
 
-  const code = cleanCode || generatePartnerCode(partnerName);
-  const location = input.location || (input.city ? `${input.city}, ${input.state || "India"}` : "India");
+    const rows = db.prepare("SELECT id FROM partners WHERE id LIKE 'P2IP-PT-%'").all() as { id: string }[];
+    let maxSeq = 0;
+    for (const r of rows) {
+      const rawNum = r.id.replace("P2IP-PT-", "").trim();
+      const parsed = parseInt(rawNum, 10);
+      if (!isNaN(parsed) && parsed > maxSeq) {
+        maxSeq = parsed;
+      }
+    }
+
+    let candidateSeq = maxSeq + 1;
+    while (true) {
+      const candidateId = `P2IP-PT-${String(candidateSeq).padStart(4, "0")}`;
+      const exists = db.prepare("SELECT id FROM partners WHERE id = ?").get(candidateId);
+      if (!exists) {
+        return candidateId;
+      }
+      candidateSeq++;
+    }
+  };
+
+  const partnerId = getNextSafePartnerId(input.id);
+
+  // Guarantee partner code is unique; if cleanCode matches an existing record, generate a safe unique variant
+  let code = cleanCode || generatePartnerCode(partnerName);
+  let codeOwner = db.prepare("SELECT id FROM partners WHERE code = ?").get(code);
+  let codeSuffix = 1;
+  while (codeOwner) {
+    code = `${cleanCode || generatePartnerCode(partnerName)}${codeSuffix}`;
+    codeOwner = db.prepare("SELECT id FROM partners WHERE code = ?").get(code);
+    codeSuffix++;
+  }
+
   const referralUrl = `https://pathtoinnerpeace.in/r/${code}`;
-  const now = new Date().toISOString();
-  const org = (input.organisation || input.organization || "Independent Practice").trim();
-  const pType = input.partnerType || "Individual Referral Partner";
-  const password = (input.password || "p2ip@partner").trim();
-  const twoStepPin = (input.twoStepAuthPin || input.twoStepPin || "123456").trim();
   const status = "ACTIVE";
 
   db.prepare(`
@@ -481,12 +539,13 @@ export function registerPartner(input: PartnerRegistrationInput) {
     now
   );
 
-  // If bank details provided, store in payout_accounts
+  // If bank details provided, store in payout_accounts with unique ID
   if (input.bankDetails && (input.bankDetails.upiId || input.bankDetails.accountNumber)) {
     const isUpi = Boolean(input.bankDetails.upiId && !input.bankDetails.accountNumber);
     const maskedAcct = input.bankDetails.accountNumber
       ? `XXXX${input.bankDetails.accountNumber.slice(-4)}`
       : "";
+    const acctId = `acc_${partnerId}_${Date.now()}`;
     db.prepare(`
       INSERT INTO payout_accounts (
         id, partner_id, method, account_holder_name, bank_name,
@@ -494,7 +553,7 @@ export function registerPartner(input: PartnerRegistrationInput) {
         account_type, upi_id, is_primary, is_verified, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
     `).run(
-      `acc_${partnerId}`,
+      acctId,
       partnerId,
       isUpi ? "UPI" : "BANK_ACCOUNT",
       input.bankDetails.accountHolderName || partnerName,
@@ -509,17 +568,21 @@ export function registerPartner(input: PartnerRegistrationInput) {
     );
   }
 
-  // Also create user record
-  db.prepare(`
-    INSERT OR REPLACE INTO users (id, email, password_hash, role, partner_id, created_at)
-    VALUES (?, ?, ?, 'partner', ?, ?)
-  `).run(`usr_${partnerId}`, input.email, password, partnerId, now);
+  // Also clean up any prior user row with the same email or partner_id to prevent unique collisions
+  try {
+    db.prepare("DELETE FROM users WHERE email = ? OR partner_id = ?").run(input.email, partnerId);
+  } catch (e) {}
 
-  // Create audit log
+  db.prepare(`
+    INSERT INTO users (id, email, password_hash, role, partner_id, created_at)
+    VALUES (?, ?, ?, 'partner', ?, ?)
+  `).run(`usr_${partnerId}_${Date.now()}`, input.email, password, partnerId, now);
+
+  // Create audit log with unique ID
   db.prepare(`
     INSERT INTO audit_logs (id, timestamp, actor, actor_role, action, entity_type, entity_id, old_value, new_value, reason)
     VALUES (?, ?, ?, 'partner', 'REGISTER_PARTNER', 'PARTNER_LEVEL', ?, '', ?, ?)
-  `).run(`log_${Date.now()}`, now, partnerName, partnerId, status, input.notes || "Self registration");
+  `).run(`log_${partnerId}_${Date.now()}`, now, partnerName, partnerId, status, input.notes || "Self registration");
 
   const row = db.prepare("SELECT * FROM partners WHERE id = ?").get(partnerId);
   return formatPartnerToCamel(row);

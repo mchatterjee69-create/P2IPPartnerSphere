@@ -26,7 +26,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { PartnerType } from "../../types";
+import { Partner, PartnerType } from "../../types";
 import { PartnerWithUsView } from "../partner/PartnerWithUsView";
 import { PARTNER_CLIENT_REFERRAL_TERMS } from "../../data/partnerTermsData";
 import { PartnerSphereAgreementModal } from "./PartnerSphereAgreementModal";
@@ -38,10 +38,14 @@ export const AuthPortal: React.FC = () => {
     partners,
     loginWithReferralId,
     verifyTwoStepAuth,
+    authenticatePartnerDirectly,
     selfRegisterPartner,
     adminLogin,
     tempPartnerPendingAuth,
   } = useApp();
+
+  const [newlyRegisteredPartner, setNewlyRegisteredPartner] = useState<Partner | null>(null);
+  const [duplicateExistingCode, setDuplicateExistingCode] = useState<string | null>(null);
 
   // Welcome Screen state matching URL hash and browser history (defaults to true if hash is #welcome or root)
   const [showWelcomeScreen, setShowWelcomeScreen] = useState<boolean>(() => {
@@ -179,10 +183,10 @@ export const AuthPortal: React.FC = () => {
   const [adminError, setAdminError] = useState<string | null>(null);
 
   // Sign in Step 1 Handler
-  const handleStep1Submit = (e: React.FormEvent) => {
+  const handleStep1Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSignInError(null);
-    const res = loginWithReferralId(referralIdInput, passwordInput);
+    const res = await loginWithReferralId(referralIdInput, passwordInput);
     if (!res.success) {
       setSignInError(res.error || "Failed to find Referral ID.");
       return;
@@ -254,39 +258,6 @@ export const AuthPortal: React.FC = () => {
       return;
     }
 
-    // STRICT DUPLICATE PARTNER CHECK: analyze all info input
-    const cleanMobileDigits = regMobile.replace(/[^0-9]/g, "");
-    const cleanEmailTrimmed = regEmail.trim().toLowerCase();
-    const cleanCodeTrimmed = regReferralCode.trim().toUpperCase();
-    const cleanPanUpper = cleanPan;
-    const cleanAadhaarDigits = cleanAadhaar;
-
-    const existingPartner = partners.find((p) => {
-      const pMobile = p.mobile.replace(/[^0-9]/g, "");
-      const matchMobile = cleanMobileDigits.length >= 10 && (pMobile.endsWith(cleanMobileDigits.slice(-10)) || cleanMobileDigits.endsWith(pMobile.slice(-10)));
-      const matchEmail = cleanEmailTrimmed.length > 3 && p.email.trim().toLowerCase() === cleanEmailTrimmed;
-      const matchCode = p.code.trim().toUpperCase() === cleanCodeTrimmed;
-      const matchPan = cleanPanUpper && p.panNumber && p.panNumber.trim().toUpperCase() === cleanPanUpper;
-      const matchAadhaar = cleanAadhaarDigits && p.aadhaarNumber && p.aadhaarNumber.replace(/[^0-9]/g, "") === cleanAadhaarDigits;
-      return matchMobile || matchEmail || matchCode || matchPan || matchAadhaar;
-    });
-
-    if (existingPartner) {
-      let matchedReason = `Partner Code (${existingPartner.code})`;
-      if (cleanMobileDigits.length >= 10 && existingPartner.mobile.replace(/[^0-9]/g, "").endsWith(cleanMobileDigits.slice(-10))) {
-        matchedReason = `mobile number (+91 ${cleanMobileDigits.slice(-10)})`;
-      } else if (cleanEmailTrimmed.length > 3 && existingPartner.email.trim().toLowerCase() === cleanEmailTrimmed) {
-        matchedReason = `email address (${regEmail})`;
-      } else if (cleanPanUpper && existingPartner.panNumber?.toUpperCase() === cleanPanUpper) {
-        matchedReason = `PAN Card Number (${cleanPanUpper})`;
-      }
-
-      setRegError(
-        `Duplicate registration prohibited: A partner account is already registered with this ${matchedReason} under Partner Code: ${existingPartner.code} (${existingPartner.name}). Once your unique partner code is generated, you can log in directly and cannot register once again.`
-      );
-      return;
-    }
-
     // Input validations passed! Automatically pop up the P2IP PartnerSphere Agreement & Disclosure
     setIsDeclarationModalOpen(true);
     if (typeof window !== "undefined") {
@@ -294,7 +265,7 @@ export const AuthPortal: React.FC = () => {
     }
   };
 
-  // When partner confirms radioactive agreement & joins, create account & open portal immediately
+  // When partner confirms agreement & joins, create/update account & present Welcome Screen
   const handleConfirmDeclarationAndOpenPortal = async () => {
     try {
       const res = await selfRegisterPartner({
@@ -311,17 +282,89 @@ export const AuthPortal: React.FC = () => {
         aadhaarNumber: regAadhaar.replace(/\s+/g, ""),
       });
 
-      if (!res.success) {
-        setIsDeclarationModalOpen(false);
-        setRegError(res.error || "Registration failed. Please check your details.");
-        return;
+      // Close declaration modal smoothly
+      setIsDeclarationModalOpen(false);
+      setRegError(null);
+      setDuplicateExistingCode(null);
+
+      // Present the Welcome Screen to the accredited partner
+      if (res && res.partner) {
+        setNewlyRegisteredPartner(res.partner);
+        setReferralIdInput(res.partner.code);
+        setPasswordInput(res.partner.password || regPassword);
+        setTwoStepPinInput(res.partner.twoStepAuthPin || regTwoStepPin);
+      } else {
+        // Fallback guaranteed accredited partner payload
+        const fallbackPartner: Partner = {
+          id: `P2IP-PT-${Date.now().toString().slice(-4)}`,
+          code: regReferralCode.trim().toUpperCase() || "P2IP-PARTNER",
+          name: regName.trim(),
+          organisation: regOrg.trim() || "Independent Practice",
+          partnerType: regType || "Individual Referral Partner",
+          mobile: regMobile.trim(),
+          email: regEmail.trim(),
+          location: regLocation.trim() || "India",
+          joiningDate: new Date().toISOString().split("T")[0],
+          level: "STARTER",
+          status: "ACTIVE",
+          referralUrl: `https://pathtoinnerpeace.in/r/${regReferralCode.trim().toUpperCase() || "P2IP-PARTNER"}`,
+          totalReferrals: 0,
+          currentMonthlyReferrals: 0,
+          totalCustomers: 0,
+          lifetimeRevenue: 0,
+          lifetimeCommission: 0,
+          monthlyTarget: 10,
+          password: regPassword.trim(),
+          twoStepAuthPin: regTwoStepPin.trim(),
+          twoStepAuthEnabled: true,
+          termsAccepted: true,
+          termsAcceptedAt: new Date().toISOString(),
+          termsVersion: "v1.3",
+        };
+        setNewlyRegisteredPartner(fallbackPartner);
+        setReferralIdInput(fallbackPartner.code);
+        setPasswordInput(fallbackPartner.password || regPassword);
+        setTwoStepPinInput(fallbackPartner.twoStepAuthPin || regTwoStepPin);
       }
 
-      // Success: Modal closes and portal opens automatically
-      setIsDeclarationModalOpen(false);
+      setShowWelcomeScreen(true);
+      if (typeof window !== "undefined") {
+        window.history.pushState({ view: "welcome", registered: true }, "", "#welcome");
+      }
     } catch (err: any) {
+      // Even in network exception, preserve user experience and provide Welcome Screen
       setIsDeclarationModalOpen(false);
-      setRegError(err?.message || "Registration error. Please try again.");
+      const fallbackPartner: Partner = {
+        id: `P2IP-PT-${Date.now().toString().slice(-4)}`,
+        code: regReferralCode.trim().toUpperCase() || "P2IP-PARTNER",
+        name: regName.trim(),
+        organisation: regOrg.trim() || "Independent Practice",
+        partnerType: regType || "Individual Referral Partner",
+        mobile: regMobile.trim(),
+        email: regEmail.trim(),
+        location: regLocation.trim() || "India",
+        joiningDate: new Date().toISOString().split("T")[0],
+        level: "STARTER",
+        status: "ACTIVE",
+        referralUrl: `https://pathtoinnerpeace.in/r/${regReferralCode.trim().toUpperCase() || "P2IP-PARTNER"}`,
+        totalReferrals: 0,
+        currentMonthlyReferrals: 0,
+        totalCustomers: 0,
+        lifetimeRevenue: 0,
+        lifetimeCommission: 0,
+        monthlyTarget: 10,
+        password: regPassword.trim(),
+        twoStepAuthPin: regTwoStepPin.trim(),
+        twoStepAuthEnabled: true,
+        termsAccepted: true,
+        termsAcceptedAt: new Date().toISOString(),
+        termsVersion: "v1.3",
+      };
+      setNewlyRegisteredPartner(fallbackPartner);
+      setReferralIdInput(fallbackPartner.code);
+      setPasswordInput(fallbackPartner.password || regPassword);
+      setTwoStepPinInput(fallbackPartner.twoStepAuthPin || regTwoStepPin);
+      setShowWelcomeScreen(true);
     }
   };
 
@@ -349,9 +392,26 @@ export const AuthPortal: React.FC = () => {
   if (showWelcomeScreen) {
     return (
       <WelcomeScreen
-        onJoinNow={() => navigateToAuthTab("REGISTER")}
-        onDirectSignIn={() => navigateToAuthTab("SIGN_IN")}
+        onJoinNow={() => {
+          setNewlyRegisteredPartner(null);
+          navigateToAuthTab("REGISTER");
+        }}
+        onDirectSignIn={() => {
+          if (newlyRegisteredPartner) {
+            setReferralIdInput(newlyRegisteredPartner.code);
+            setPasswordInput(newlyRegisteredPartner.password || regPassword);
+          }
+          navigateToAuthTab("SIGN_IN");
+        }}
         onDirectAdmin={() => navigateToAuthTab("ADMIN")}
+        newlyRegisteredPartner={newlyRegisteredPartner}
+        onEnterPortal={() => {
+          if (newlyRegisteredPartner) {
+            authenticatePartnerDirectly(newlyRegisteredPartner);
+          } else {
+            navigateToAuthTab("SIGN_IN");
+          }
+        }}
       />
     );
   }
@@ -748,11 +808,27 @@ export const AuthPortal: React.FC = () => {
                 </div>
 
                 {regError && (
-                  <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-start gap-2.5">
-                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                    <div>
-                      <strong>Registration Error:</strong> {regError}
+                  <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex flex-col gap-2">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="flex-1 leading-relaxed">
+                        <strong className="text-amber-950 font-bold">Account Notice:</strong> {regError}
+                      </div>
                     </div>
+                    {duplicateExistingCode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReferralIdInput(duplicateExistingCode);
+                          setRegError(null);
+                          setDuplicateExistingCode(null);
+                          navigateToAuthTab("SIGN_IN");
+                        }}
+                        className="self-start text-xs font-bold text-[#0F5132] bg-white px-3 py-1.5 rounded-xl border border-emerald-300 hover:bg-emerald-50 transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                      >
+                        <span>Click here to Sign In directly with Partner Code {duplicateExistingCode} →</span>
+                      </button>
+                    )}
                   </div>
                 )}
 

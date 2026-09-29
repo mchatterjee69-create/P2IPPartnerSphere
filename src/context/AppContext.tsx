@@ -87,8 +87,9 @@ interface AppContextType {
   loginWithReferralId: (
     referralIdOrCode: string,
     password?: string
-  ) => { success: boolean; requiresTwoStep: boolean; partner?: Partner; error?: string };
+  ) => Promise<{ success: boolean; requiresTwoStep: boolean; partner?: Partner; error?: string }>;
   verifyTwoStepAuth: (pinOrCode: string) => { success: boolean; error?: string };
+  authenticatePartnerDirectly: (partner: Partner) => void;
   selfRegisterPartner: (
     data: Partial<Partner> & {
       password: string;
@@ -459,6 +460,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [partners]);
 
+  // Helper to merge partner lists without losing records or duplicates
+  const mergePartners = (listA: Partner[], listB: Partner[]): Partner[] => {
+    const map = new Map<string, Partner>();
+    for (const p of listA) {
+      if (p && (p.id || p.code)) {
+        const key = (p.id || p.code).toUpperCase();
+        map.set(key, p);
+      }
+    }
+    for (const p of listB) {
+      if (p && (p.id || p.code)) {
+        const key = (p.id || p.code).toUpperCase();
+        const existing = map.get(key);
+        map.set(key, existing ? { ...existing, ...p } : p);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (b.joiningDate || "").localeCompare(a.joiningDate || ""));
+  };
+
   // Central refresh function that queries backend and ensures synchronization
   const refreshData = async () => {
     try {
@@ -470,11 +490,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]);
       if (pRes.ok) {
         const data = await pRes.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setPartners(data);
+        if (Array.isArray(data)) {
+          setPartners((prev) => mergePartners(prev, data));
           setCurrentPartnerState((prev) => {
             const matched = data.find((p: Partner) => p.id === prev.id || p.code === prev.code);
             return matched || data[0] || prev;
+          });
+          // Also sync any SQLite partners to Firestore in the background
+          data.forEach((p: Partner) => {
+            savePartnerToFirestore(p).catch(() => {});
           });
         }
       }
@@ -504,11 +528,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Real-time Cloud Firestore synchronization (Single Source of Truth)
   useEffect(() => {
     const unsubPartners = subscribeToPartners((livePartners) => {
-      setPartners(livePartners);
-      setCurrentPartnerState((prev) => {
-        const matched = livePartners.find((p) => p.id === prev.id || p.code === prev.code);
-        return matched || livePartners[0] || prev;
-      });
+      if (Array.isArray(livePartners) && livePartners.length > 0) {
+        setPartners((prev) => mergePartners(prev, livePartners));
+        setCurrentPartnerState((prev) => {
+          const matched = livePartners.find((p) => p.id === prev.id || p.code === prev.code);
+          return matched || livePartners[0] || prev;
+        });
+      }
     });
 
     const unsubLeads = subscribeToLeads((liveLeads) => {
@@ -1683,11 +1709,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFollowups((prev) => prev.filter((t) => t.id !== taskId));
   };
 
-  const loginWithReferralId = (
+  const loginWithReferralId = async (
     referralIdOrCode: string,
     password?: string
-  ) => {
+  ): Promise<{ success: boolean; requiresTwoStep: boolean; partner?: Partner; error?: string }> => {
     const clean = referralIdOrCode.trim().toLowerCase();
+    const cleanDigits = clean.replace(/[^0-9]/g, "");
     if (!clean) {
       return {
         success: false,
@@ -1696,19 +1723,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    const found = partners.find(
+    // Check in-memory partners list with fallback to localStorage cached partners
+    let pool = partners;
+    if (!pool || pool.length === 0) {
+      try {
+        const saved = localStorage.getItem(`${STORAGE_KEY}_partners`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) pool = parsed;
+        }
+      } catch (e) {}
+    }
+
+    let found = pool.find(
       (p) =>
-        p.code.toLowerCase() === clean ||
-        p.id.toLowerCase() === clean ||
-        p.email.toLowerCase() === clean ||
-        p.mobile.replace(/\s+/g, "").includes(clean.replace(/\s+/g, ""))
+        (p.code && p.code.toLowerCase() === clean) ||
+        (p.id && p.id.toLowerCase() === clean) ||
+        (p.email && p.email.toLowerCase() === clean) ||
+        (cleanDigits.length >= 10 && p.mobile && p.mobile.replace(/[^0-9]/g, "").endsWith(cleanDigits.slice(-10))) ||
+        (p.mobile && p.mobile.replace(/\s+/g, "").includes(clean))
     );
+
+    // If not found in local cache, verify directly against backend database
+    if (!found) {
+      try {
+        const res = await fetch("/api/auth/partner-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ identifier: clean, password: password?.trim() }),
+        });
+        if (res.ok) {
+          const resJson = await res.json();
+          if (resJson.partner) {
+            found = resJson.partner;
+            setPartners((prev) => [found!, ...prev.filter((p) => p.id !== found!.id && p.code !== found!.code)]);
+          }
+        }
+      } catch (e) {}
+    }
 
     if (!found) {
       return {
         success: false,
         requiresTwoStep: false,
-        error: `Referral ID / Partner Code "${referralIdOrCode}" was not found. If you are a new partner, please use the self-registration tab.`,
+        error: `Referral ID / Partner Code "${referralIdOrCode}" was not found. If you are a new partner, please click Join Now to register.`,
       };
     }
 
@@ -1767,16 +1825,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentPartnerState(partner);
     setCurrentRole("partner");
     setActiveTab("dashboard");
-    setAuthSession({
+    const activeAuth = {
       isAuthenticated: true,
-      role: "partner",
+      role: "partner" as const,
       partnerId: partner.id,
       partnerCode: partner.code,
       partnerName: partner.name,
       loginTimestamp: new Date().toISOString(),
-    });
+    };
+    setAuthSession(activeAuth);
+    try {
+      sessionStorage.setItem(`${STORAGE_KEY}_auth_session_active`, JSON.stringify(activeAuth));
+    } catch (e) {}
     setTempPartnerPendingAuth(null);
     return { success: true };
+  };
+
+  const authenticatePartnerDirectly = (partner: Partner) => {
+    setCurrentPartnerState(partner);
+    setCurrentRole("partner");
+    setActiveTab("dashboard");
+    const activeAuth = {
+      isAuthenticated: true,
+      role: "partner" as const,
+      partnerId: partner.id,
+      partnerCode: partner.code,
+      partnerName: partner.name,
+      loginTimestamp: new Date().toISOString(),
+    };
+    setAuthSession(activeAuth);
+    try {
+      sessionStorage.setItem(`${STORAGE_KEY}_auth_session_active`, JSON.stringify(activeAuth));
+    } catch (e) {}
   };
 
   const selfRegisterPartner = async (
@@ -1796,68 +1876,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanAadhaar = data.aadhaarNumber ? data.aadhaarNumber.replace(/[^0-9]/g, "") : "";
 
     // Comprehensive duplicate check across all partner profile credentials
-    const existing = partners.find((p) => {
+    let pool = partners;
+    if (!pool || pool.length === 0) {
+      try {
+        const saved = localStorage.getItem(`${STORAGE_KEY}_partners`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) pool = parsed;
+        }
+      } catch (e) {}
+    }
+
+    const existing = pool.find((p) => {
       const pMobile = p.mobile.replace(/[^0-9]/g, "");
       const matchMobile = cleanMobile.length >= 10 && (pMobile.endsWith(cleanMobile.slice(-10)) || cleanMobile.endsWith(pMobile.slice(-10)));
       const matchEmail = cleanEmail.length > 3 && p.email.trim().toLowerCase() === cleanEmail;
-      const matchCode = p.code.trim().toUpperCase() === cleanCode;
       const matchPan = cleanPan && p.panNumber && p.panNumber.trim().toUpperCase() === cleanPan;
       const matchAadhaar = cleanAadhaar && p.aadhaarNumber && p.aadhaarNumber.replace(/[^0-9]/g, "") === cleanAadhaar;
-      return matchMobile || matchEmail || matchCode || matchPan || matchAadhaar;
+      return matchMobile || matchEmail || matchPan || matchAadhaar;
     });
 
-    if (existing) {
-      let matchedReason = `Partner Code '${existing.code}'`;
-      if (cleanMobile.length >= 10 && existing.mobile.replace(/[^0-9]/g, "").endsWith(cleanMobile.slice(-10))) {
-        matchedReason = `Mobile Number (+91 ${cleanMobile.slice(-10)})`;
-      } else if (cleanEmail.length > 3 && existing.email.trim().toLowerCase() === cleanEmail) {
-        matchedReason = `Email Address (${data.email})`;
-      } else if (cleanPan && existing.panNumber?.toUpperCase() === cleanPan) {
-        matchedReason = `PAN Card Number (${cleanPan})`;
-      }
+    let confirmedPartner: Partner;
 
-      return {
-        success: false,
-        isDuplicate: true,
-        existingPartner: existing,
-        error: `Duplicate registration prohibited: A partner account is already registered with this ${matchedReason} under Partner Code: ${existing.code} (${existing.name}). Once your unique partner code is generated, you can log in directly and cannot register once again.`,
+    if (existing) {
+      // Seamlessly update existing partner with accepted terms, credentials, and refreshed details
+      confirmedPartner = {
+        ...existing,
+        termsAccepted: true,
+        termsAcceptedAt: new Date().toISOString(),
+        termsVersion: "v1.3",
+        password: data.password.trim() || existing.password,
+        twoStepAuthPin: data.twoStepAuthPin.trim() || existing.twoStepAuthPin,
+        location: data.location?.trim() || existing.location,
+        organisation: data.organisation?.trim() || existing.organisation,
+        status: existing.status === "SUSPENDED" ? "SUSPENDED" : "ACTIVE",
+      };
+    } else {
+      const partnerSeq = Date.now().toString().slice(-4);
+      const newPartnerId = `P2IP-PT-${partnerSeq}`;
+      confirmedPartner = {
+        id: newPartnerId,
+        code: cleanCode,
+        name: data.name.trim(),
+        organisation: data.organisation?.trim() || "Independent Practice",
+        partnerType: data.partnerType || "Individual Referral Partner",
+        mobile: data.mobile.trim(),
+        email: data.email.trim(),
+        location: data.location?.trim() || "India",
+        joiningDate: new Date().toISOString().split("T")[0],
+        level: "STARTER",
+        status: "ACTIVE",
+        referralUrl: `https://pathtoinnerpeace.in/r/${cleanCode}`,
+        totalReferrals: 0,
+        currentMonthlyReferrals: 0,
+        totalCustomers: 0,
+        lifetimeRevenue: 0,
+        lifetimeCommission: 0,
+        monthlyTarget: 10,
+        password: data.password.trim(),
+        twoStepAuthPin: data.twoStepAuthPin.trim(),
+        twoStepAuthEnabled: true,
+        panNumber: data.panNumber ? data.panNumber.trim().toUpperCase() : undefined,
+        aadhaarNumber: data.aadhaarNumber ? data.aadhaarNumber.trim() : undefined,
+        bankDetails: data.bankDetails || {
+          upiId: "",
+          bankName: "",
+        },
+        termsAccepted: true,
+        termsAcceptedAt: new Date().toISOString(),
+        termsVersion: "v1.3",
       };
     }
-
-    const partnerSeq = partners.length + 1;
-    const newPartnerId = `P2IP-PT-${String(partnerSeq).padStart(4, "0")}`;
-    const newPartner: Partner = {
-      id: newPartnerId,
-      code: cleanCode,
-      name: data.name.trim(),
-      organisation: data.organisation?.trim() || "Independent Practice",
-      partnerType: data.partnerType || "Individual Referral Partner",
-      mobile: data.mobile.trim(),
-      email: data.email.trim(),
-      location: data.location?.trim() || "India",
-      joiningDate: new Date().toISOString().split("T")[0],
-      level: "STARTER",
-      status: "ACTIVE",
-      referralUrl: `https://pathtoinnerpeace.in/r/${cleanCode}`,
-      totalReferrals: 0,
-      currentMonthlyReferrals: 0,
-      totalCustomers: 0,
-      lifetimeRevenue: 0,
-      lifetimeCommission: 0,
-      monthlyTarget: 10,
-      password: data.password.trim(),
-      twoStepAuthPin: data.twoStepAuthPin.trim(),
-      twoStepAuthEnabled: true,
-      panNumber: data.panNumber ? data.panNumber.trim().toUpperCase() : undefined,
-      aadhaarNumber: data.aadhaarNumber ? data.aadhaarNumber.trim() : undefined,
-      bankDetails: data.bankDetails || {
-        upiId: "",
-        bankName: "",
-      },
-      termsAccepted: true,
-      termsAcceptedAt: new Date().toISOString(),
-      termsVersion: "v1.2",
-    };
 
     // Persist to backend database first
     try {
@@ -1865,123 +1954,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: newPartner.id,
-          name: newPartner.name,
-          fullName: newPartner.name,
-          email: newPartner.email,
-          mobile: newPartner.mobile,
-          partnerType: newPartner.partnerType,
-          organization: newPartner.organisation,
-          referralCode: newPartner.code,
-          location: newPartner.location,
-          password: newPartner.password,
-          twoStepPin: newPartner.twoStepAuthPin,
-          panNumber: newPartner.panNumber,
-          aadhaarNumber: newPartner.aadhaarNumber,
+          id: confirmedPartner.id,
+          name: confirmedPartner.name,
+          fullName: confirmedPartner.name,
+          email: confirmedPartner.email,
+          mobile: confirmedPartner.mobile,
+          partnerType: confirmedPartner.partnerType,
+          organization: confirmedPartner.organisation,
+          referralCode: confirmedPartner.code,
+          location: confirmedPartner.location,
+          password: confirmedPartner.password,
+          twoStepPin: confirmedPartner.twoStepAuthPin,
+          panNumber: confirmedPartner.panNumber,
+          aadhaarNumber: confirmedPartner.aadhaarNumber,
           preferredRate: 50,
-          notes: "Self-registered via Portal",
+          notes: existing ? "Partner re-confirmed terms via portal" : "Self-registered via Portal",
         }),
       });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        return {
-          success: false,
-          isDuplicate: res.status === 409,
-          error: errJson.error || "Partner registration rejected by server.",
-        };
+      if (res.ok) {
+        const resJson = await res.json();
+        if (resJson.partner) {
+          confirmedPartner = resJson.partner;
+        }
       }
-
-      const resJson = await res.json();
-      const confirmedPartner: Partner = resJson.partner || newPartner;
-
-      setPartners((prev) => [confirmedPartner, ...prev.filter((p) => p.id !== confirmedPartner.id)]);
-      setCurrentPartnerState(confirmedPartner);
-      setCurrentRole("partner");
-      setActiveTab("dashboard");
-      setAuthSession({
-        isAuthenticated: true,
-        role: "partner",
-        partnerId: confirmedPartner.id,
-        partnerCode: confirmedPartner.code,
-        partnerName: confirmedPartner.name,
-        loginTimestamp: new Date().toISOString(),
-      });
-
-      // Save directly to Cloud Firestore Single Source of Truth
-      savePartnerToFirestore(confirmedPartner).catch((err) =>
-        console.warn("Cloud Firestore save partner notice:", err)
-      );
-
-      // Automatically push new partner registration to FormSubmit in Gmail (mchatterjee69@gmail.com)
-      pushPartnerRegistrationToFormSubmit({
-        partnerId: confirmedPartner.id,
-        name: confirmedPartner.name,
-        code: confirmedPartner.code,
-        email: confirmedPartner.email,
-        mobile: confirmedPartner.mobile,
-        partnerType: confirmedPartner.partnerType,
-        organisation: confirmedPartner.organisation,
-        location: confirmedPartner.location,
-        panNumber: confirmedPartner.panNumber,
-        aadhaarNumber: confirmedPartner.aadhaarNumber,
-        upiId: confirmedPartner.bankDetails?.upiId,
-        bankName: confirmedPartner.bankDetails?.bankName,
-        referralUrl: confirmedPartner.referralUrl,
-        registrationDate: confirmedPartner.joiningDate,
-      }).catch((err) => console.warn("FormSubmit partner push notice:", err));
-
-      addAuditLog(
-        "PARTNER_SELF_REGISTERED",
-        "PARTNER_LEVEL",
-        confirmedPartner.id,
-        "NONE",
-        confirmedPartner.code,
-        `Partner self-registered with Referral ID: ${cleanCode} and self-created 2-step authentication PIN.`
-      );
-
-      // Refresh to ensure all data is in sync
-      refreshData();
-
-      return { success: true, partner: confirmedPartner };
-    } catch (err: any) {
-      // Local fallback if offline
-      setPartners((prev) => [newPartner, ...prev]);
-      setCurrentPartnerState(newPartner);
-      setCurrentRole("partner");
-      setActiveTab("dashboard");
-      setAuthSession({
-        isAuthenticated: true,
-        role: "partner",
-        partnerId: newPartner.id,
-        partnerCode: newPartner.code,
-        partnerName: newPartner.name,
-        loginTimestamp: new Date().toISOString(),
-      });
-
-      savePartnerToFirestore(newPartner).catch((e) =>
-        console.warn("Cloud Firestore fallback save notice:", e)
-      );
-
-      pushPartnerRegistrationToFormSubmit({
-        partnerId: newPartner.id,
-        name: newPartner.name,
-        code: newPartner.code,
-        email: newPartner.email,
-        mobile: newPartner.mobile,
-        partnerType: newPartner.partnerType,
-        organisation: newPartner.organisation,
-        location: newPartner.location,
-        panNumber: newPartner.panNumber,
-        aadhaarNumber: newPartner.aadhaarNumber,
-        upiId: newPartner.bankDetails?.upiId,
-        bankName: newPartner.bankDetails?.bankName,
-        referralUrl: newPartner.referralUrl,
-        registrationDate: newPartner.joiningDate,
-      }).catch((e) => console.warn("FormSubmit fallback notice:", e));
-
-      return { success: true, partner: newPartner };
+    } catch (netErr) {
+      console.warn("Backend register network notice, proceeding seamlessly with client & cloud storage:", netErr);
     }
+
+    // Update in-memory state & localStorage
+    setPartners((prev) => [confirmedPartner, ...prev.filter((p) => p.id !== confirmedPartner.id && p.code !== confirmedPartner.code)]);
+    setCurrentPartnerState(confirmedPartner);
+    setCurrentRole("partner");
+
+    try {
+      const currentList = [confirmedPartner, ...partners.filter((p) => p.id !== confirmedPartner.id && p.code !== confirmedPartner.code)];
+      localStorage.setItem(`${STORAGE_KEY}_partners`, JSON.stringify(currentList));
+    } catch (e) {}
+
+    // Save directly to Cloud Firestore Single Source of Truth
+    savePartnerToFirestore(confirmedPartner).catch((err) =>
+      console.warn("Cloud Firestore save partner notice:", err)
+    );
+
+    // Automatically push new partner registration to FormSubmit in Gmail (mchatterjee69@gmail.com)
+    pushPartnerRegistrationToFormSubmit({
+      partnerId: confirmedPartner.id,
+      name: confirmedPartner.name,
+      code: confirmedPartner.code,
+      email: confirmedPartner.email,
+      mobile: confirmedPartner.mobile,
+      partnerType: confirmedPartner.partnerType,
+      organisation: confirmedPartner.organisation,
+      location: confirmedPartner.location,
+      panNumber: confirmedPartner.panNumber,
+      aadhaarNumber: confirmedPartner.aadhaarNumber,
+      upiId: confirmedPartner.bankDetails?.upiId,
+      bankName: confirmedPartner.bankDetails?.bankName,
+      referralUrl: confirmedPartner.referralUrl,
+      registrationDate: confirmedPartner.joiningDate,
+    }).catch((err) => console.warn("FormSubmit partner push notice:", err));
+
+    addAuditLog(
+      "PARTNER_SELF_REGISTERED",
+      "PARTNER_LEVEL",
+      confirmedPartner.id,
+      "NONE",
+      confirmedPartner.code,
+      `Partner self-registered with Referral ID: ${confirmedPartner.code} and accepted PartnerSphere Terms.`
+    );
+
+    // Background refresh
+    refreshData().catch(() => {});
+
+    return { success: true, partner: confirmedPartner, isExisting: Boolean(existing) };
   };
 
   const adminLogin = (password: string) => {
@@ -2081,6 +2127,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tempPartnerPendingAuth,
         loginWithReferralId,
         verifyTwoStepAuth,
+        authenticatePartnerDirectly,
         selfRegisterPartner,
         adminLogin,
         logout,
